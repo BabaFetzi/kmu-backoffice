@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* optional: bisschen Grund-Reset, kann man so lassen */
+:root { color-scheme: light dark; }
+body { margin: 0; }
