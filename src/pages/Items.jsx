@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { buildReorderSuggestions } from "../lib/replenishment";
 
 function prettySupabaseError(error) {
   if (!error) return "";
@@ -41,6 +42,43 @@ function formatCHF(value) {
   return n.toLocaleString("de-CH", { style: "currency", currency: "CHF" });
 }
 
+const REORDER_LOOKBACK_DAYS = 30;
+const REORDER_LEAD_TIME_DAYS = 14;
+const REORDER_SAFETY_DAYS = 7;
+const REORDER_MAX_ROWS = 8;
+
+function reorderUrgencyTone(level) {
+  if (level === "critical") return "bad";
+  if (level === "high") return "warn";
+  if (level === "medium") return "default";
+  return "ok";
+}
+
+function reorderUrgencyLabel(level) {
+  if (level === "critical") return "kritisch";
+  if (level === "high") return "hoch";
+  if (level === "medium") return "mittel";
+  return "ok";
+}
+
+function formatQty(value, unit) {
+  const n = Number(value || 0);
+  const normalizedUnit = String(unit || "").toLowerCase();
+  const isDiscrete =
+    normalizedUnit === "pcs" ||
+    normalizedUnit === "stk" ||
+    normalizedUnit === "stk." ||
+    normalizedUnit === "piece" ||
+    normalizedUnit === "pieces" ||
+    normalizedUnit === "unit" ||
+    normalizedUnit === "stueck" ||
+    normalizedUnit === "stück";
+  return n.toLocaleString("de-CH", {
+    minimumFractionDigits: isDiscrete ? 0 : 2,
+    maximumFractionDigits: isDiscrete ? 0 : 2,
+  });
+}
+
 export default function Items() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -51,6 +89,11 @@ export default function Items() {
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [err, setErr] = useState("");
+  const [reorderLoading, setReorderLoading] = useState(false);
+  const [reorderRows, setReorderRows] = useState([]);
+  const [reorderErr, setReorderErr] = useState("");
+  const [reorderInfo, setReorderInfo] = useState("");
+  const [reorderTaskBusyId, setReorderTaskBusyId] = useState("");
 
   // Drawer
   const [open, setOpen] = useState(false);
@@ -87,6 +130,47 @@ export default function Items() {
   const [mvPosting, setMvPosting] = useState(false);
   const mvPostingRef = useRef(false);
 
+  const loadReorderSuggestions = useCallback(async (itemRows) => {
+    setReorderErr("");
+    setReorderInfo("");
+    setReorderLoading(true);
+
+    const activeItems = (itemRows || []).filter((it) => (it.status || "active") === "active");
+    if (activeItems.length === 0) {
+      setReorderRows([]);
+      setReorderLoading(false);
+      return;
+    }
+
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - REORDER_LOOKBACK_DAYS);
+
+    const { data: movementRows, error: movementErr } = await supabase
+      .from("stock_movements")
+      .select("item_id, reason_code, qty, created_at")
+      .in("reason_code", ["sale", "return", "cancel"])
+      .gte("created_at", since.toISOString());
+
+    if (movementErr) {
+      setReorderErr(prettySupabaseError(movementErr));
+      setReorderRows([]);
+      setReorderLoading(false);
+      return;
+    }
+
+    const suggestions = buildReorderSuggestions({
+      items: activeItems,
+      movements: movementRows || [],
+      lookbackDays: REORDER_LOOKBACK_DAYS,
+      leadTimeDays: REORDER_LEAD_TIME_DAYS,
+      safetyDays: REORDER_SAFETY_DAYS,
+    }).slice(0, REORDER_MAX_ROWS);
+
+    setReorderRows(suggestions);
+    setReorderLoading(false);
+  }, []);
+
   async function load() {
     setLoading(true);
     setErr("");
@@ -98,8 +182,17 @@ export default function Items() {
       )
       .order("created_at", { ascending: false });
 
-    if (error) setErr(prettySupabaseError(error));
-    setItems(data || []);
+    if (error) {
+      setErr(prettySupabaseError(error));
+      setItems([]);
+      setReorderRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const rows = data || [];
+    setItems(rows);
+    await loadReorderSuggestions(rows);
     setLoading(false);
   }
 
@@ -540,6 +633,61 @@ export default function Items() {
     setMvReason("");
   }
 
+  async function createReorderTask(row) {
+    if (!row?.id) return;
+
+    setReorderErr("");
+    setReorderInfo("");
+    setReorderTaskBusyId(row.id);
+
+    const title = `Nachbestellung empfohlen: ${row.item_no || row.name || "Artikel"}`;
+    const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const { data: existingRows, error: existingErr } = await supabase
+      .from("tasks")
+      .select("id")
+      .eq("item_id", row.id)
+      .in("status", ["open", "in_progress"])
+      .ilike("title", "Nachbestellung empfohlen:%")
+      .limit(1);
+
+    if (existingErr) {
+      setReorderErr(prettySupabaseError(existingErr));
+      setReorderTaskBusyId("");
+      return;
+    }
+
+    if ((existingRows || []).length > 0) {
+      setReorderInfo(`Für ${row.name} existiert bereits eine offene Nachbestell-Aufgabe.`);
+      setReorderTaskBusyId("");
+      return;
+    }
+
+    const description =
+      `Systemvorschlag (${REORDER_LOOKBACK_DAYS} Tage): ` +
+      `Bestand ${formatQty(row.current_stock, row.unit)} ${row.unit || "pcs"}, ` +
+      `Ø Nachfrage ${formatQty(row.avgDailyDemand, row.unit)} ${row.unit || "pcs"}/Tag, ` +
+      `empfohlene Menge ${formatQty(row.reorderQty, row.unit)} ${row.unit || "pcs"}.`;
+
+    const { error } = await supabase.from("tasks").insert({
+      title,
+      description,
+      status: "open",
+      due_date: dueDate,
+      item_id: row.id,
+      supplier_id: row.supplier_id || null,
+    });
+
+    if (error) {
+      setReorderErr(prettySupabaseError(error));
+      setReorderTaskBusyId("");
+      return;
+    }
+
+    setReorderInfo(`Aufgabe für ${row.name} angelegt.`);
+    setReorderTaskBusyId("");
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_360px]">
       {/* LEFT: module */}
@@ -733,23 +881,108 @@ export default function Items() {
         </div>
       </div>
 
-      {/* RIGHT: KI panel placeholder */}
+      {/* RIGHT: KI panel */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 h-fit sticky top-[72px]">
         <div className="flex items-center justify-between">
           <div className="font-semibold">KI-Assistent</div>
-          <Badge tone="ok">bereit</Badge>
+          <Badge tone={reorderRows.length > 0 ? "warn" : "ok"}>
+            {reorderRows.length > 0 ? "Aktion nötig" : "bereit"}
+          </Badge>
         </div>
 
         <div className="mt-2 text-sm text-slate-700">
-          Nächster Sprint: Kategorien vorschlagen, Einheit erkennen, Dubletten (Name/Nr),
-          Preis plausibilisieren, Pflichtfelder markieren.
+          Automatische Nachbestell-Vorschläge auf Basis der letzten {REORDER_LOOKBACK_DAYS} Tage
+          (Verkauf minus Retouren/Storno).
+        </div>
+
+        {reorderErr && (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {reorderErr}
+          </div>
+        )}
+        {reorderInfo && (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+            {reorderInfo}
+          </div>
+        )}
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-slate-800">Nachbestell-Vorschläge</div>
+            <div className="text-xs text-slate-500">Top {REORDER_MAX_ROWS}</div>
+          </div>
+          <div className="mt-2 space-y-2">
+            {reorderLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                Berechne Vorschläge…
+              </div>
+            ) : reorderRows.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                Kein akuter Nachbestellbedarf.
+              </div>
+            ) : (
+              reorderRows.map((row) => (
+                <div key={row.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-900">{row.name || "—"}</div>
+                      <div className="truncate text-xs text-slate-500">
+                        {row.item_no || "ohne Nr."} · {row.unit || "pcs"}
+                      </div>
+                    </div>
+                    <Badge tone={reorderUrgencyTone(row.urgency)}>
+                      {reorderUrgencyLabel(row.urgency)}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div>
+                      Bestand:{" "}
+                      <span className="font-medium text-slate-900">
+                        {formatQty(row.current_stock, row.unit)} {row.unit || "pcs"}
+                      </span>
+                    </div>
+                    <div>
+                      Vorschlag:{" "}
+                      <span className="font-medium text-slate-900">
+                        {formatQty(row.reorderQty, row.unit)} {row.unit || "pcs"}
+                      </span>
+                    </div>
+                    <div>
+                      Ø/Tag:{" "}
+                      <span className="font-medium text-slate-900">
+                        {formatQty(row.avgDailyDemand, row.unit)} {row.unit || "pcs"}
+                      </span>
+                    </div>
+                    <div>
+                      Reichweite:{" "}
+                      <span className="font-medium text-slate-900">
+                        {row.coverageDays === null ? "—" : `${row.coverageDays} Tage`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-2">
+                    <button
+                      onClick={() => createReorderTask(row)}
+                      disabled={reorderTaskBusyId === row.id}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-100 disabled:opacity-60"
+                    >
+                      {reorderTaskBusyId === row.id ? "Erstelle Aufgabe…" : "Aufgabe anlegen"}
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="mt-4 space-y-2 text-sm">
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3">
             <div className="text-xs text-slate-500">ERP-Tipp</div>
             <div className="mt-1 text-slate-800">
-              Artikelnummern sind Gold: konsistent, kurz, eindeutig.
+              Lege je Artikel einen Lieferanten und Einkaufspreis fest, damit Vorschläge schneller in
+              echte Bestellungen übergehen.
             </div>
           </div>
         </div>

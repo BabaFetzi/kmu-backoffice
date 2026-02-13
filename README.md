@@ -23,6 +23,16 @@ npm run lint
 npm run build
 ```
 
+## Smart Replenishment (Neu)
+
+Im Modul `Artikel` gibt es jetzt einen Bereich **Nachbestell-Vorschläge**:
+
+- Berechnung auf Basis der letzten 30 Tage (`sale - return - cancel`)
+- Zielbestand mit Standardwerten:
+  - Lieferzeit: 14 Tage
+  - Sicherheitsbestand: 7 Tage
+- Pro Vorschlag kann direkt eine Aufgabe erzeugt werden (`Aufgabe anlegen`), damit das Team die Nachbestellung abarbeitet.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
