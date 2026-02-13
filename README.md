@@ -51,6 +51,7 @@ Im Modul `Belege` gibt es jetzt den Einstieg **Bankabgleich (CSV)**:
 - Batch-Verbuchung der ausgewählten Matches via `apply_payment`
 - Duplikatschutz serverseitig (idempotent): gleicher `BANKCSV|...` Marker pro Beleg wird nur einmal akzeptiert
 - Bankimport-Historie mit `Rückgängig` (Undo) pro importierter Zahlung
+- Import-Run-Report (letzte 20 Läufe) mit Kennzahlen: Total, Auswahl, Verbucht, Duplikate, Fehler, Hinweise
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

@@ -10,6 +10,12 @@ function sanitizeText(value, maxLen = 180) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
 }
 
+function toSafeCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
 function splitCsvLine(line, delimiter) {
   const result = [];
   let current = "";
@@ -428,4 +434,37 @@ export function summarizePaymentMatches(rows = []) {
     },
     { total: 0, matched: 0, unmatched: 0, ambiguous: 0, ignored: 0, invalid: 0 }
   );
+}
+
+export function buildBankImportRunReport({
+  sourceFile = "",
+  summary = {},
+  selectedCount = 0,
+  bookedCount = 0,
+  duplicateCount = 0,
+  failedCount = 0,
+  parseErrors = [],
+  meta = {},
+} = {}) {
+  const safeErrors = (parseErrors || [])
+    .map((v) => sanitizeText(v, 220))
+    .filter(Boolean)
+    .slice(0, 10);
+
+  return {
+    source_file: sanitizeText(sourceFile, 180),
+    total_rows: toSafeCount(summary.total),
+    matched_rows: toSafeCount(summary.matched),
+    ambiguous_rows: toSafeCount(summary.ambiguous),
+    unmatched_rows: toSafeCount(summary.unmatched),
+    ignored_rows: toSafeCount(summary.ignored),
+    invalid_rows: toSafeCount(summary.invalid),
+    selected_rows: toSafeCount(selectedCount),
+    booked_rows: toSafeCount(bookedCount),
+    duplicate_rows: toSafeCount(duplicateCount),
+    failed_rows: toSafeCount(failedCount),
+    parse_error_count: toSafeCount((parseErrors || []).length),
+    errors_preview: safeErrors,
+    meta: meta && typeof meta === "object" ? meta : {},
+  };
 }

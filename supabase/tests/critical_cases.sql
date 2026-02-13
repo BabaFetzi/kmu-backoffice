@@ -29,6 +29,7 @@ DECLARE
   v_total_b numeric;
   v_level int;
   v_bank_payment_id uuid;
+  v_bank_run_id uuid;
 BEGIN
   -- Simulate authenticated user for auth.uid()
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
@@ -291,6 +292,54 @@ BEGIN
   WHERE order_id = v_order_b;
   IF v_cnt <> 3 THEN
     RAISE EXCEPTION 'Test failed: expected 3 payment rows after full settlement.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  INSERT INTO public.bank_import_runs (
+    source_file,
+    total_rows,
+    matched_rows,
+    ambiguous_rows,
+    unmatched_rows,
+    ignored_rows,
+    invalid_rows,
+    selected_rows,
+    booked_rows,
+    duplicate_rows,
+    failed_rows,
+    parse_error_count,
+    errors_preview,
+    meta
+  ) VALUES (
+    'critical-test.csv',
+    4,
+    2,
+    1,
+    1,
+    0,
+    0,
+    2,
+    1,
+    1,
+    0,
+    1,
+    '["Zeile 3: Betrag fehlt"]'::jsonb,
+    '{"source":"critical_cases"}'::jsonb
+  )
+  RETURNING id INTO v_bank_run_id;
+  IF v_bank_run_id IS NULL THEN
+    RAISE EXCEPTION 'Test failed: bank_import_runs insert failed.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.bank_import_runs
+  WHERE id = v_bank_run_id
+    AND source_file = 'critical-test.csv'
+    AND booked_rows = 1
+    AND duplicate_rows = 1;
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: bank_import_runs stored values mismatch.';
   END IF;
   v_checks := v_checks + 1;
 
