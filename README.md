@@ -49,6 +49,7 @@ Im Modul `Belege` gibt es jetzt den Einstieg **Bankabgleich (CSV)**:
 - automatische Zuordnung zu offenen Belegen (Rechnungsnr., Auftragsnr., Betrag)
 - manuelle Zuordnung für mehrdeutige oder fehlende Treffer direkt im Modal
 - Batch-Verbuchung der ausgewählten Matches via `apply_payment`
+- Duplikatschutz serverseitig (idempotent): gleicher `BANKCSV|...` Marker pro Beleg wird nur einmal akzeptiert
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

@@ -4,6 +4,7 @@ import DunningLetterPreview from "../components/DunningLetterPreview";
 import {
   buildBankImportMarker,
   buildPaymentMatches,
+  isBankImportDuplicateError,
   parseBankCsv,
   resolvePaymentMatch,
   summarizePaymentMatches,
@@ -499,8 +500,12 @@ export default function Documents() {
         p_note: marker,
       });
 
-      if (error) failed += 1;
-      else booked += 1;
+      if (error) {
+        if (isBankImportDuplicateError(error)) duplicates += 1;
+        else failed += 1;
+      } else {
+        booked += 1;
+      }
     }
 
     setBankApplyBusy(false);
