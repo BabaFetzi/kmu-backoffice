@@ -171,7 +171,7 @@ export default function Items() {
     setReorderLoading(false);
   }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setErr("");
 
@@ -194,7 +194,7 @@ export default function Items() {
     setItems(rows);
     await loadReorderSuggestions(rows);
     setLoading(false);
-  }
+  }, [loadReorderSuggestions]);
 
   const loadMovements = useCallback(async (itemId) => {
     if (!itemId) {
@@ -219,7 +219,7 @@ export default function Items() {
     queueMicrotask(() => {
       void load();
     });
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     async function loadVatRates() {

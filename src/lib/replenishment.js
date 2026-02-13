@@ -25,7 +25,7 @@ function normalizeReorderQuantity(value, unit) {
   if (DISCRETE_UNITS.has(normalizedUnit)) {
     return Math.ceil(Number(value));
   }
-  return Math.ceil(Number(value) * 100) / 100;
+  return Math.ceil((Number(value) - 1e-9) * 100) / 100;
 }
 
 function urgencyLevel({ currentStock, avgDailyDemand, leadTimeDays, reorderQty }) {

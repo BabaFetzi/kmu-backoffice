@@ -33,6 +33,14 @@ Im Modul `Artikel` gibt es jetzt einen Bereich **Nachbestell-Vorschläge**:
   - Sicherheitsbestand: 7 Tage
 - Pro Vorschlag kann direkt eine Aufgabe erzeugt werden (`Aufgabe anlegen`), damit das Team die Nachbestellung abarbeitet.
 
+## Cashflow Forecast (Neu)
+
+Im `Dashboard` gibt es jetzt eine **Liquiditätsvorschau (30 Tage)**:
+
+- erwartete Einzahlungen aus offenen Posten (inkl. überfälliger Anteil)
+- erwartete Auszahlungen aus offenen/bestellten Einkaufsaufträgen
+- Netto-Prognose und Hinweis auf Einkaufsaufträge ohne Liefertermin
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
