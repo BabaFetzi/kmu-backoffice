@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { supabase } from "../lib/supabaseClient";
 import DunningLetterPreview from "../components/DunningLetterPreview";
 import {
+  buildBankImportRunEntries,
   buildBankImportRunReport,
   buildBankImportMarker,
   buildPaymentMatches,
@@ -144,6 +145,10 @@ export default function Documents() {
   const [bankUndoBusyPaymentId, setBankUndoBusyPaymentId] = useState("");
   const [bankImportRuns, setBankImportRuns] = useState([]);
   const [bankImportRunsLoading, setBankImportRunsLoading] = useState(false);
+  const [bankRunDetailsOpenId, setBankRunDetailsOpenId] = useState("");
+  const [bankRunDetailsRows, setBankRunDetailsRows] = useState([]);
+  const [bankRunDetailsLoading, setBankRunDetailsLoading] = useState(false);
+  const [bankRunDetailsErr, setBankRunDetailsErr] = useState("");
   const [bankSelectedById, setBankSelectedById] = useState({});
   const [bankManualDocByRowId, setBankManualDocByRowId] = useState({});
   const printRef = useRef(null);
@@ -215,6 +220,37 @@ export default function Documents() {
 
     setBankImportRuns(data || []);
     return { missingRelation: false };
+  }
+
+  async function openBankRunDetails(runId) {
+    const targetRunId = String(runId || "").trim();
+    if (!targetRunId) return;
+
+    setBankRunDetailsOpenId(targetRunId);
+    setBankRunDetailsRows([]);
+    setBankRunDetailsErr("");
+    setBankRunDetailsLoading(true);
+
+    const { data, error } = await supabase
+      .from("bank_import_run_rows")
+      .select(
+        "id, row_no, booking_date, amount, currency, reference, message, counterparty, raw_status, effective_status, selected, processing_result, error_text, match_strategy, matched_invoice_no, matched_order_no, is_manual, parse_issues"
+      )
+      .eq("run_id", targetRunId)
+      .order("row_no", { ascending: true });
+
+    setBankRunDetailsLoading(false);
+    if (error) {
+      const code = String(error.code || "");
+      if (code === "42P01" || code === "PGRST205") {
+        setBankRunDetailsErr("Detailtabelle fehlt. Bitte Migration ausführen.");
+      } else {
+        setBankRunDetailsErr(prettySupabaseError(error));
+      }
+      return;
+    }
+
+    setBankRunDetailsRows(data || []);
   }
 
   useEffect(() => {
@@ -365,6 +401,11 @@ export default function Documents() {
         marker: parseBankImportMarker(p.note),
       }));
   }, [payments]);
+
+  const bankRunDetailsRun = useMemo(() => {
+    if (!bankRunDetailsOpenId) return null;
+    return bankImportRuns.find((r) => r.id === bankRunDetailsOpenId) || null;
+  }, [bankImportRuns, bankRunDetailsOpenId]);
 
   const openOrder = useCallback((orderId, action, docType) => {
     if (!orderId) return;
@@ -531,6 +572,7 @@ export default function Documents() {
     let booked = 0;
     let duplicates = 0;
     let failed = 0;
+    const processingByRowId = {};
 
     for (const row of selectedRows) {
       const marker = buildBankImportMarker(row);
@@ -543,11 +585,19 @@ export default function Documents() {
 
       if (dupErr) {
         failed += 1;
+        processingByRowId[row.id] = {
+          result: "failed",
+          error: prettySupabaseError(dupErr),
+        };
         continue;
       }
 
       if ((dupRows || []).length > 0) {
         duplicates += 1;
+        processingByRowId[row.id] = {
+          result: "duplicate",
+          error: "Bereits verbucht (Precheck)",
+        };
         continue;
       }
 
@@ -561,10 +611,25 @@ export default function Documents() {
       });
 
       if (error) {
-        if (isBankImportDuplicateError(error)) duplicates += 1;
-        else failed += 1;
+        if (isBankImportDuplicateError(error)) {
+          duplicates += 1;
+          processingByRowId[row.id] = {
+            result: "duplicate",
+            error: prettySupabaseError(error),
+          };
+        } else {
+          failed += 1;
+          processingByRowId[row.id] = {
+            result: "failed",
+            error: prettySupabaseError(error),
+          };
+        }
       } else {
         booked += 1;
+        processingByRowId[row.id] = {
+          result: "booked",
+          error: null,
+        };
       }
     }
 
@@ -580,7 +645,27 @@ export default function Documents() {
         manual_assigned_count: selectedRows.filter((row) => row.isManual).length,
       },
     });
-    const { error: runInsertErr } = await supabase.from("bank_import_runs").insert(runReport);
+    const { data: runInsertData, error: runInsertErr } = await supabase
+      .from("bank_import_runs")
+      .insert(runReport)
+      .select("id")
+      .single();
+
+    let runRowsWarning = "";
+    if (!runInsertErr && runInsertData?.id) {
+      const runEntries = buildBankImportRunEntries({
+        runId: runInsertData.id,
+        rows: bankRowsResolved,
+        selectedById: bankSelectedById,
+        processingById: processingByRowId,
+      });
+      if (runEntries.length > 0) {
+        const { error: rowInsertErr } = await supabase.from("bank_import_run_rows").insert(runEntries);
+        if (rowInsertErr) {
+          runRowsWarning = ` Detailprotokoll nicht gespeichert (${prettySupabaseError(rowInsertErr)}).`;
+        }
+      }
+    }
 
     setBankApplyBusy(false);
 
@@ -601,7 +686,7 @@ export default function Documents() {
       ? ` Laufprotokoll nicht gespeichert (${prettySupabaseError(runInsertErr)}).`
       : "";
     setInfo(
-      `Bankimport abgeschlossen: ${booked} verbucht, ${duplicates} Duplikate, ${failed} Fehler.${runInsertWarning}${runsRefreshWarning}`
+      `Bankimport abgeschlossen: ${booked} verbucht, ${duplicates} Duplikate, ${failed} Fehler.${runInsertWarning}${runRowsWarning}${runsRefreshWarning}`
     );
   }
 
@@ -1559,7 +1644,7 @@ export default function Documents() {
             <div className="mt-2 text-xs text-slate-500">Noch keine Import-Läufe protokolliert.</div>
           ) : (
             <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-              <div className="grid grid-cols-[165px_1fr_90px_90px_90px_90px_90px_90px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
+              <div className="grid grid-cols-[165px_1fr_80px_80px_80px_80px_80px_80px_100px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
                 <div>Zeit</div>
                 <div>Datei</div>
                 <div className="text-right">Total</div>
@@ -1568,12 +1653,13 @@ export default function Documents() {
                 <div className="text-right">Duplikat</div>
                 <div className="text-right">Fehler</div>
                 <div className="text-right">Hinweise</div>
+                <div className="text-right">Details</div>
               </div>
               <div className="divide-y divide-slate-200">
                 {bankImportRuns.map((r) => (
                   <div
                     key={`${r.id}-run`}
-                    className="grid grid-cols-[165px_1fr_90px_90px_90px_90px_90px_90px] px-3 py-2 text-xs"
+                    className="grid grid-cols-[165px_1fr_80px_80px_80px_80px_80px_80px_100px] px-3 py-2 text-xs"
                   >
                     <div className="text-slate-500">
                       {r.created_at ? new Date(r.created_at).toLocaleString("de-CH") : "—"}
@@ -1585,6 +1671,14 @@ export default function Documents() {
                     <div className="text-right tabular-nums text-amber-700">{Number(r.duplicate_rows || 0)}</div>
                     <div className="text-right tabular-nums text-rose-700">{Number(r.failed_rows || 0)}</div>
                     <div className="text-right tabular-nums">{Number(r.parse_error_count || 0)}</div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => openBankRunDetails(r.id)}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-100"
+                      >
+                        Zeilen
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1592,6 +1686,103 @@ export default function Documents() {
           )}
         </div>
       </div>
+
+      {bankRunDetailsOpenId ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-7xl rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Importlauf-Details</div>
+                <div className="text-sm text-slate-500">
+                  {bankRunDetailsRun?.source_file || "bank.csv"}
+                  {bankRunDetailsRun?.created_at
+                    ? ` · ${new Date(bankRunDetailsRun.created_at).toLocaleString("de-CH")}`
+                    : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setBankRunDetailsOpenId("");
+                  setBankRunDetailsRows([]);
+                  setBankRunDetailsErr("");
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-100"
+              >
+                Schliessen
+              </button>
+            </div>
+
+            {bankRunDetailsErr ? (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {bankRunDetailsErr}
+              </div>
+            ) : null}
+
+            {bankRunDetailsLoading ? (
+              <div className="mt-3 text-xs text-slate-500">Lade Details…</div>
+            ) : bankRunDetailsRows.length === 0 ? (
+              <div className="mt-3 text-xs text-slate-500">Keine Zeilendetails vorhanden.</div>
+            ) : (
+              <div className="mt-3 max-h-[70vh] overflow-auto rounded-xl border border-slate-200">
+                <div className="min-w-[1380px]">
+                  <div className="grid grid-cols-[70px_110px_130px_130px_120px_160px_180px_1fr] gap-x-3 bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                    <div>Zeile</div>
+                    <div className="text-right">Betrag</div>
+                    <div>Raw</div>
+                    <div>Effektiv</div>
+                    <div>Resultat</div>
+                    <div>Match</div>
+                    <div>Referenz</div>
+                    <div>Fehler / Hinweise</div>
+                  </div>
+                  <div className="divide-y divide-slate-200">
+                    {bankRunDetailsRows.map((d) => {
+                      const parseIssues = Array.isArray(d.parse_issues)
+                        ? d.parse_issues.filter(Boolean).map((v) => String(v))
+                        : [];
+                      const rowNotes = [...parseIssues];
+                      if (d.error_text) rowNotes.push(String(d.error_text));
+                      return (
+                        <div
+                          key={`${d.id}-detail`}
+                          className="grid grid-cols-[70px_110px_130px_130px_120px_160px_180px_1fr] gap-x-3 px-3 py-2 text-xs"
+                        >
+                          <div>
+                            #{Number(d.row_no || 0)}
+                            <div className="text-[11px] text-slate-500">
+                              {d.booking_date
+                                ? new Date(`${d.booking_date}T12:00:00Z`).toLocaleDateString("de-CH")
+                                : "—"}
+                            </div>
+                          </div>
+                          <div className="text-right tabular-nums">
+                            {d.amount === null || d.amount === undefined
+                              ? "—"
+                              : `${formatCHF(d.amount)} ${d.currency || "CHF"}`}
+                          </div>
+                          <div className="truncate">{d.raw_status || "—"}</div>
+                          <div className="truncate">
+                            {d.effective_status || "—"}
+                            {d.is_manual ? " · manuell" : ""}
+                          </div>
+                          <div className="truncate">{d.processing_result || "—"}</div>
+                          <div className="truncate">
+                            {d.matched_invoice_no || d.matched_order_no || "—"}
+                          </div>
+                          <div className="truncate">{d.reference || d.message || d.counterparty || "—"}</div>
+                          <div className="text-slate-700">
+                            {rowNotes.length > 0 ? rowNotes.join(" | ") : "—"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {bankImportOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">

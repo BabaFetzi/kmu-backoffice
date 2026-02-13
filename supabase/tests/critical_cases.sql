@@ -343,6 +343,76 @@ BEGIN
   END IF;
   v_checks := v_checks + 1;
 
+  INSERT INTO public.bank_import_run_rows (
+    run_id,
+    row_no,
+    booking_date,
+    amount,
+    currency,
+    reference,
+    message,
+    raw_status,
+    effective_status,
+    selected,
+    processing_result,
+    error_text,
+    match_strategy,
+    matched_order_id,
+    matched_invoice_no,
+    matched_order_no,
+    is_manual,
+    parse_issues
+  ) VALUES
+    (
+      v_bank_run_id,
+      1,
+      CURRENT_DATE,
+      7.50,
+      'CHF',
+      'INV-TEST',
+      'MATCH',
+      'matched',
+      'matched',
+      true,
+      'booked',
+      null,
+      'invoice_ref',
+      v_order_b,
+      'INV-TEST',
+      'AUF-TEST',
+      false,
+      '[]'::jsonb
+    ),
+    (
+      v_bank_run_id,
+      2,
+      null,
+      null,
+      'CHF',
+      null,
+      null,
+      'invalid',
+      'invalid',
+      false,
+      'failed',
+      'Datum fehlt',
+      null,
+      null,
+      null,
+      null,
+      false,
+      '["Datum fehlt"]'::jsonb
+    );
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.bank_import_run_rows
+  WHERE run_id = v_bank_run_id;
+  IF v_cnt <> 2 THEN
+    RAISE EXCEPTION 'Test failed: bank_import_run_rows insert/select mismatch.';
+  END IF;
+  v_checks := v_checks + 1;
+
   -- 4) Order C (overdue + dunning)
   INSERT INTO public.orders (
     created_by, customer_id, status, total_chf,

@@ -468,3 +468,55 @@ export function buildBankImportRunReport({
     meta: meta && typeof meta === "object" ? meta : {},
   };
 }
+
+export function buildBankImportRunEntries({
+  runId = "",
+  rows = [],
+  selectedById = {},
+  processingById = {},
+} = {}) {
+  const safeRunId = String(runId || "").trim();
+  if (!safeRunId) return [];
+
+  return (rows || []).map((row) => {
+    const selected = Boolean(selectedById?.[row?.id]);
+    const processing = processingById?.[row?.id] || {};
+    const parseIssues = Array.isArray(row?.parseIssues)
+      ? row.parseIssues.map((v) => sanitizeText(v, 180)).filter(Boolean)
+      : [];
+
+    const amount = Number(row?.amount);
+    const processingResult = sanitizeText(
+      processing.result || (selected ? "unknown" : "not_selected"),
+      60
+    );
+
+    return {
+      run_id: safeRunId,
+      row_no: toSafeCount(row?.rowNo),
+      booking_date: sanitizeText(row?.bookingDate || "", 20) || null,
+      amount: Number.isFinite(amount) ? amount : null,
+      currency: sanitizeText(row?.currency || "CHF", 8) || "CHF",
+      reference: sanitizeText(row?.reference || "", 180) || null,
+      message: sanitizeText(row?.message || "", 220) || null,
+      counterparty: sanitizeText(row?.counterparty || "", 180) || null,
+      raw_status: sanitizeText(row?.status || "unknown", 60) || "unknown",
+      effective_status:
+        sanitizeText(row?.effectiveStatus || row?.status || "unknown", 60) || "unknown",
+      selected,
+      processing_result: processingResult || "unknown",
+      error_text: sanitizeText(
+        processing.error || (parseIssues.length > 0 ? parseIssues.join("; ") : ""),
+        300
+      ) || null,
+      match_strategy: sanitizeText(row?.strategy || "", 80) || null,
+      matched_order_id: row?.resolvedMatch?.id || row?.match?.id || null,
+      matched_invoice_no:
+        sanitizeText(row?.resolvedMatch?.invoice_no || row?.match?.invoice_no || "", 80) || null,
+      matched_order_no:
+        sanitizeText(row?.resolvedMatch?.order_no || row?.match?.order_no || "", 80) || null,
+      is_manual: Boolean(row?.isManual),
+      parse_issues: parseIssues,
+    };
+  });
+}

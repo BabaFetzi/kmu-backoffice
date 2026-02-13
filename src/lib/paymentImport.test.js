@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBankImportRunEntries,
   buildBankImportRunReport,
   buildBankImportMarker,
   buildPaymentMatches,
@@ -230,5 +231,62 @@ describe("payment import helpers", () => {
     expect(report.parse_error_count).toBe(3);
     expect(report.errors_preview).toHaveLength(2);
     expect(report.meta).toEqual({});
+  });
+
+  it("builds normalized run detail entries per imported row", () => {
+    const entries = buildBankImportRunEntries({
+      runId: "run-1",
+      rows: [
+        {
+          id: "bank-1",
+          rowNo: 1,
+          bookingDate: "2026-02-13",
+          amount: 120.5,
+          currency: "CHF",
+          reference: "INV-1001",
+          message: "Zahlung",
+          counterparty: "Kunde AG",
+          status: "matched",
+          effectiveStatus: "matched",
+          strategy: "invoice_ref",
+          isManual: false,
+          resolvedMatch: { id: "order-1", invoice_no: "INV-1001", order_no: "AUF-1" },
+          parseIssues: [],
+        },
+        {
+          id: "bank-2",
+          rowNo: 2,
+          bookingDate: null,
+          amount: null,
+          status: "invalid",
+          effectiveStatus: "invalid",
+          parseIssues: ["Datum fehlt", "Betrag fehlt"],
+        },
+      ],
+      selectedById: { "bank-1": true },
+      processingById: {
+        "bank-1": { result: "booked" },
+        "bank-2": { result: "failed", error: "Ungültig" },
+      },
+    });
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      run_id: "run-1",
+      row_no: 1,
+      processing_result: "booked",
+      matched_order_id: "order-1",
+      matched_invoice_no: "INV-1001",
+      selected: true,
+    });
+    expect(entries[1]).toMatchObject({
+      run_id: "run-1",
+      row_no: 2,
+      raw_status: "invalid",
+      effective_status: "invalid",
+      processing_result: "failed",
+      selected: false,
+      parse_issues: ["Datum fehlt", "Betrag fehlt"],
+    });
   });
 });

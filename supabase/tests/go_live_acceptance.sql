@@ -35,6 +35,9 @@ BEGIN
   IF to_regclass('public.bank_import_runs') IS NULL THEN
     RAISE EXCEPTION 'Missing table: public.bank_import_runs';
   END IF;
+  IF to_regclass('public.bank_import_run_rows') IS NULL THEN
+    RAISE EXCEPTION 'Missing table: public.bank_import_run_rows';
+  END IF;
   IF to_regprocedure('public.undo_bank_import_payment(uuid)') IS NULL THEN
     RAISE EXCEPTION 'Missing function: public.undo_bank_import_payment(uuid)';
   END IF;
