@@ -39,19 +39,33 @@ export async function createOrderWithLines({ lines }) {
 }
 
 export async function setOrderStatus(orderId, status) {
-  const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
-  if (error) throw new Error(prettySupabaseError(error));
-  return true;
+  if (status === "done") {
+    const { error } = await supabase.rpc("finalize_order", { p_order_id: orderId });
+    if (error) throw new Error(prettySupabaseError(error));
+    return true;
+  }
+
+  if (status === "storno") {
+    const { error } = await supabase.rpc("cancel_order", { p_order_id: orderId });
+    if (error) throw new Error(prettySupabaseError(error));
+    return true;
+  }
+
+  throw new Error(`Unbekannter Status: ${status}`);
 }
 
 export async function markOrderDone(orderId) {
-  // Muss exakt zu deiner DB-Check-Constraint passen:
-  // open | done | cancelled
   return setOrderStatus(orderId, "done");
 }
 
 export async function cancelOrder(orderId) {
-  return setOrderStatus(orderId, "cancelled");
+  return setOrderStatus(orderId, "storno");
+}
+
+export async function cancelOrderAfterDone(orderId) {
+  const { error } = await supabase.rpc("cancel_order_after_done", { p_order_id: orderId });
+  if (error) throw new Error(prettySupabaseError(error));
+  return true;
 }
 
 /**
@@ -64,11 +78,10 @@ export async function createReturnMovement(orderId, orderLineId, qty, notes = ""
   if (!orderLineId) throw new Error("orderLineId fehlt");
   if (!Number.isFinite(q) || q <= 0) throw new Error("Menge muss > 0 sein");
 
-  const { data, error } = await supabase.rpc("create_return_movement", {
-    p_order_id: orderId,
+  const { data, error } = await supabase.rpc("book_return", {
     p_order_line_id: orderLineId,
     p_qty: q,
-    p_notes: notes || "",
+    p_note: notes || "",
   });
 
   if (error) throw new Error(prettySupabaseError(error));

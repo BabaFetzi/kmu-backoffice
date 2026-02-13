@@ -1,5 +1,28 @@
 # React + Vite
 
+## CI / Quality Gates
+
+Dieses Repository nutzt GitHub Actions unter
+`/Users/fabiozahrl/Projects/kmu-backoffice/.github/workflows/ci.yml`.
+
+Bei jedem Push und bei Pull Requests nach `main` laufen automatisch:
+
+1. `npm ci`
+2. `npm audit --audit-level=high`
+3. `npm test`
+4. `npm run lint`
+5. `npm run build`
+
+Lokal kannst du die gleichen Gates so prüfen:
+
+```bash
+npm ci
+npm audit --audit-level=high
+npm test
+npm run lint
+npm run build
+```
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
