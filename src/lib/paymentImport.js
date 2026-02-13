@@ -349,6 +349,10 @@ export function buildBankImportMarker(row) {
   return raw.slice(0, 220);
 }
 
+export function isBankImportDuplicateError(error) {
+  return String(error?.code || "") === "23505";
+}
+
 export function resolvePaymentMatch({
   row,
   manualDocId = "",

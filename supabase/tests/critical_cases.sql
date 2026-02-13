@@ -202,6 +202,28 @@ BEGIN
   END IF;
   v_checks := v_checks + 1;
 
+  PERFORM public.apply_payment(
+    v_order_b,
+    7.5,
+    'Bankimport',
+    now(),
+    'BANKCSV|2026-02-13|7.50|INV-TEST|MATCH'
+  );
+  v_checks := v_checks + 1;
+
+  BEGIN
+    PERFORM public.apply_payment(
+      v_order_b,
+      7.5,
+      'Bankimport',
+      now(),
+      'BANKCSV|2026-02-13|7.50|INV-TEST|MATCH'
+    );
+    RAISE EXCEPTION 'Test failed: duplicate BANKCSV marker must fail.';
+  EXCEPTION WHEN unique_violation THEN
+    v_checks := v_checks + 1;
+  END;
+
   PERFORM public.apply_payment(v_order_b, 9999, 'Bank', now(), 'Restzahlung');
 
   SELECT COUNT(*) INTO v_cnt
@@ -215,8 +237,8 @@ BEGIN
   SELECT COUNT(*) INTO v_cnt
   FROM public.payments
   WHERE order_id = v_order_b;
-  IF v_cnt <> 2 THEN
-    RAISE EXCEPTION 'Test failed: expected 2 payment rows after full settlement.';
+  IF v_cnt <> 3 THEN
+    RAISE EXCEPTION 'Test failed: expected 3 payment rows after full settlement.';
   END IF;
   v_checks := v_checks + 1;
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBankImportMarker,
   buildPaymentMatches,
+  isBankImportDuplicateError,
   parseBankCsv,
   resolvePaymentMatch,
   summarizePaymentMatches,
@@ -146,5 +147,11 @@ describe("payment import helpers", () => {
     expect(ignored.resolvedMatch).toBeNull();
     expect(invalid.effectiveStatus).toBe("invalid");
     expect(invalid.resolvedMatch).toBeNull();
+  });
+
+  it("detects duplicate-key errors from bank import apply_payment", () => {
+    expect(isBankImportDuplicateError({ code: "23505" })).toBe(true);
+    expect(isBankImportDuplicateError({ code: "PGRST116" })).toBe(false);
+    expect(isBankImportDuplicateError(null)).toBe(false);
   });
 });
