@@ -5,7 +5,10 @@ import {
   buildBankImportMarker,
   buildPaymentMatches,
   isBankImportDuplicateError,
+  isBankImportMarker,
+  isBankImportPayment,
   parseBankCsv,
+  parseBankImportMarker,
   resolvePaymentMatch,
   summarizePaymentMatches,
 } from "../lib/paymentImport";
@@ -137,6 +140,7 @@ export default function Documents() {
   const [bankImportErrors, setBankImportErrors] = useState([]);
   const [bankImportBusy, setBankImportBusy] = useState(false);
   const [bankApplyBusy, setBankApplyBusy] = useState(false);
+  const [bankUndoBusyPaymentId, setBankUndoBusyPaymentId] = useState("");
   const [bankSelectedById, setBankSelectedById] = useState({});
   const [bankManualDocByRowId, setBankManualDocByRowId] = useState({});
   const printRef = useRef(null);
@@ -324,6 +328,15 @@ export default function Documents() {
   const bankManualAssignedCount = useMemo(() => {
     return bankRowsResolved.filter((row) => row.isManual).length;
   }, [bankRowsResolved]);
+
+  const bankImportHistoryRows = useMemo(() => {
+    return (payments || [])
+      .filter((p) => isBankImportPayment(p))
+      .map((p) => ({
+        ...p,
+        marker: parseBankImportMarker(p.note),
+      }));
+  }, [payments]);
 
   const openOrder = useCallback((orderId, action, docType) => {
     if (!orderId) return;
@@ -519,6 +532,47 @@ export default function Documents() {
     }
 
     setInfo(`Bankimport abgeschlossen: ${booked} verbucht, ${duplicates} Duplikate, ${failed} Fehler.`);
+  }
+
+  async function undoBankImportPayment(paymentRow) {
+    const paymentId = paymentRow?.id || "";
+    if (!paymentId) return;
+
+    let confirmed = true;
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      try {
+        confirmed = window.confirm("Diese Bankimport-Buchung wirklich rückgängig machen?");
+      } catch {
+        confirmed = true;
+      }
+    }
+    if (!confirmed) return;
+
+    clearMessages();
+    setBankUndoBusyPaymentId(paymentId);
+
+    const { error } = await supabase.rpc("undo_bank_import_payment", {
+      p_payment_id: paymentId,
+    });
+
+    if (error) {
+      setBankUndoBusyPaymentId("");
+      setErr(prettySupabaseError(error));
+      return;
+    }
+
+    try {
+      await loadOrdersList();
+      await loadPaymentsSnapshot();
+      const markerText = isBankImportMarker(paymentRow?.note)
+        ? String(paymentRow.note)
+        : "BANKCSV";
+      setInfo(`Bankimport rückgängig: ${markerText}`);
+    } catch (e) {
+      setErr(prettySupabaseError(e));
+    } finally {
+      setBankUndoBusyPaymentId("");
+    }
   }
 
   async function bumpDunning(orderId, currentLevel) {
@@ -1357,6 +1411,65 @@ export default function Documents() {
               Zahlungsjournal CSV
             </button>
           </div>
+        </div>
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Bankimport-Historie (Undo)</div>
+            <div className="text-xs text-slate-500">Nur Zahlungen aus CSV-Bankabgleich.</div>
+          </div>
+          {paymentsLoading ? (
+            <div className="mt-2 text-xs text-slate-500">Lade…</div>
+          ) : bankImportHistoryRows.length === 0 ? (
+            <div className="mt-2 text-xs text-slate-500">Keine Bankimport-Buchungen gefunden.</div>
+          ) : (
+            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+              <div className="grid grid-cols-[140px_130px_1fr_150px_140px_110px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                <div>Beleg</div>
+                <div className="text-right">Betrag</div>
+                <div>Marker</div>
+                <div>Importdatum</div>
+                <div>Verbucht am</div>
+                <div className="text-right">Aktion</div>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {bankImportHistoryRows.map((p) => (
+                  <div
+                    key={`${p.id}-bank-history`}
+                    className="grid grid-cols-[140px_130px_1fr_150px_140px_110px] px-3 py-2 text-xs"
+                  >
+                    <div className="font-medium truncate min-w-0">
+                      {p.orders?.invoice_no || p.orders?.order_no || "—"}
+                    </div>
+                    <div className="text-right tabular-nums">
+                      {formatCHF(p.amount)} {p.currency || "CHF"}
+                    </div>
+                    <div className="truncate text-slate-600 min-w-0">
+                      {p.marker?.reference || p.marker?.message
+                        ? `${p.marker?.reference || "—"}${p.marker?.message ? ` · ${p.marker.message}` : ""}`
+                        : p.note || "—"}
+                    </div>
+                    <div className="text-slate-500">
+                      {p.marker?.bookingDate
+                        ? new Date(`${p.marker.bookingDate}T12:00:00Z`).toLocaleDateString("de-CH")
+                        : "—"}
+                    </div>
+                    <div className="text-slate-500">
+                      {p.paid_at ? new Date(p.paid_at).toLocaleDateString("de-CH") : "—"}
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => undoBankImportPayment(p)}
+                        disabled={bankUndoBusyPaymentId === p.id}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                      >
+                        {bankUndoBusyPaymentId === p.id ? "Undo…" : "Rückgängig"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

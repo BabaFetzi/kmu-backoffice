@@ -3,7 +3,10 @@ import {
   buildBankImportMarker,
   buildPaymentMatches,
   isBankImportDuplicateError,
+  isBankImportMarker,
+  isBankImportPayment,
   parseBankCsv,
+  parseBankImportMarker,
   resolvePaymentMatch,
   summarizePaymentMatches,
 } from "./paymentImport";
@@ -153,5 +156,25 @@ describe("payment import helpers", () => {
     expect(isBankImportDuplicateError({ code: "23505" })).toBe(true);
     expect(isBankImportDuplicateError({ code: "PGRST116" })).toBe(false);
     expect(isBankImportDuplicateError(null)).toBe(false);
+  });
+
+  it("parses BANKCSV markers for history display", () => {
+    const marker = "BANKCSV|2026-02-13|120.50|INV-1|ZAHLUNG EINGANG";
+    const parsed = parseBankImportMarker(marker);
+    expect(parsed).toEqual({
+      source: "BANKCSV",
+      bookingDate: "2026-02-13",
+      amount: 120.5,
+      reference: "INV-1",
+      message: "ZAHLUNG EINGANG",
+    });
+  });
+
+  it("recognizes bank-import payments robustly", () => {
+    expect(isBankImportMarker("bankcsv|2026-01-01|1|A|B")).toBe(true);
+    expect(isBankImportPayment({ method: "Bankimport", note: "BANKCSV|2026-01-01|1.00|A|B" })).toBe(true);
+    expect(isBankImportPayment({ method: "Überweisung", note: "BANKCSV|2026-01-01|1.00|A|B" })).toBe(false);
+    expect(isBankImportPayment({ method: "Bankimport", note: "MANUAL" })).toBe(false);
+    expect(parseBankImportMarker("BANKCSV|BROKEN")).toBeNull();
   });
 });

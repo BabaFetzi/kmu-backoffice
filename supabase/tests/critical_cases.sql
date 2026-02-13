@@ -28,6 +28,7 @@ DECLARE
   v_checks int := 0;
   v_total_b numeric;
   v_level int;
+  v_bank_payment_id uuid;
 BEGIN
   -- Simulate authenticated user for auth.uid()
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
@@ -201,6 +202,57 @@ BEGIN
     RAISE EXCEPTION 'Test failed: expected 1 payment row after partial payment.';
   END IF;
   v_checks := v_checks + 1;
+
+  PERFORM public.apply_payment(
+    v_order_b,
+    7.5,
+    'Bankimport',
+    now(),
+    'BANKCSV|2026-02-13|7.50|INV-TEST|MATCH'
+  );
+  v_checks := v_checks + 1;
+
+  SELECT id INTO v_bank_payment_id
+  FROM public.payments
+  WHERE order_id = v_order_b
+    AND note = 'BANKCSV|2026-02-13|7.50|INV-TEST|MATCH'
+  ORDER BY created_at DESC
+  LIMIT 1;
+  IF v_bank_payment_id IS NULL THEN
+    RAISE EXCEPTION 'Test failed: missing BANKCSV payment to undo.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  PERFORM public.undo_bank_import_payment(v_bank_payment_id);
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.payments
+  WHERE id = v_bank_payment_id;
+  IF v_cnt <> 0 THEN
+    RAISE EXCEPTION 'Test failed: undo did not delete bank-import payment.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.orders
+  WHERE id = v_order_b AND payment_status = 'partial';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: undo should set Order B back to partial.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  BEGIN
+    SELECT id INTO v_bank_payment_id
+    FROM public.payments
+    WHERE order_id = v_order_b
+      AND note = 'Teilzahlung'
+    ORDER BY created_at DESC
+    LIMIT 1;
+    PERFORM public.undo_bank_import_payment(v_bank_payment_id);
+    RAISE EXCEPTION 'Test failed: undo must reject non-bankimport payments.';
+  EXCEPTION WHEN OTHERS THEN
+    v_checks := v_checks + 1;
+  END;
 
   PERFORM public.apply_payment(
     v_order_b,
