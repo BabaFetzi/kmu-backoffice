@@ -22,5 +22,6 @@ describe("Documents smoke", () => {
 
     expect(await screen.findByText("Belege")).toBeInTheDocument();
     expect(screen.getByText("Bankabgleich (CSV)")).toBeInTheDocument();
+    expect(screen.getByText("Bankimport-Historie (Undo)")).toBeInTheDocument();
   });
 });

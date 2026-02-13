@@ -353,6 +353,30 @@ export function isBankImportDuplicateError(error) {
   return String(error?.code || "") === "23505";
 }
 
+export function isBankImportMarker(note) {
+  return String(note || "").trim().toUpperCase().startsWith("BANKCSV|");
+}
+
+export function parseBankImportMarker(note) {
+  if (!isBankImportMarker(note)) return null;
+
+  const parts = String(note || "").trim().split("|");
+  if (parts.length < 5) return null;
+
+  const amount = Number(parts[2]);
+  return {
+    source: parts[0] || "BANKCSV",
+    bookingDate: parts[1] || "",
+    amount: Number.isFinite(amount) ? amount : null,
+    reference: parts[3] || "",
+    message: parts.slice(4).join("|") || "",
+  };
+}
+
+export function isBankImportPayment(payment) {
+  return String(payment?.method || "").trim() === "Bankimport" && isBankImportMarker(payment?.note);
+}
+
 export function resolvePaymentMatch({
   row,
   manualDocId = "",
