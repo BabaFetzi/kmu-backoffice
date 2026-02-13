@@ -144,6 +144,7 @@ export default function Documents() {
   const [bankUndoBusyPaymentId, setBankUndoBusyPaymentId] = useState("");
   const [bankImportRuns, setBankImportRuns] = useState([]);
   const [bankImportRunsLoading, setBankImportRunsLoading] = useState(false);
+  const [bankRunPreview, setBankRunPreview] = useState(null);
   const [bankSelectedById, setBankSelectedById] = useState({});
   const [bankManualDocByRowId, setBankManualDocByRowId] = useState({});
   const printRef = useRef(null);
@@ -365,6 +366,15 @@ export default function Documents() {
         marker: parseBankImportMarker(p.note),
       }));
   }, [payments]);
+
+  const bankRunPreviewErrors = useMemo(() => {
+    if (!bankRunPreview) return [];
+    const values = Array.isArray(bankRunPreview.errors_preview) ? bankRunPreview.errors_preview : [];
+    return values
+      .map((v) => String(v || "").trim())
+      .filter(Boolean)
+      .slice(0, 20);
+  }, [bankRunPreview]);
 
   const openOrder = useCallback((orderId, action, docType) => {
     if (!orderId) return;
@@ -1493,41 +1503,31 @@ export default function Documents() {
           ) : bankImportHistoryRows.length === 0 ? (
             <div className="mt-2 text-xs text-slate-500">Keine Bankimport-Buchungen gefunden.</div>
           ) : (
-            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-              <div className="grid grid-cols-[140px_130px_1fr_150px_140px_110px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
-                <div>Beleg</div>
-                <div className="text-right">Betrag</div>
-                <div>Marker</div>
-                <div>Importdatum</div>
-                <div>Verbucht am</div>
-                <div className="text-right">Aktion</div>
-              </div>
-              <div className="divide-y divide-slate-200">
+            <>
+              <div className="mt-3 space-y-2 md:hidden">
                 {bankImportHistoryRows.map((p) => (
-                  <div
-                    key={`${p.id}-bank-history`}
-                    className="grid grid-cols-[140px_130px_1fr_150px_140px_110px] px-3 py-2 text-xs"
-                  >
-                    <div className="font-medium truncate min-w-0">
-                      {p.orders?.invoice_no || p.orders?.order_no || "—"}
+                  <div key={`${p.id}-bank-history-mobile`} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium">{p.orders?.invoice_no || p.orders?.order_no || "—"}</div>
+                      <div className="font-medium tabular-nums">{formatCHF(p.amount)}</div>
                     </div>
-                    <div className="text-right tabular-nums">
-                      {formatCHF(p.amount)} {p.currency || "CHF"}
-                    </div>
-                    <div className="truncate text-slate-600 min-w-0">
+                    <div className="mt-1 text-slate-500">
                       {p.marker?.reference || p.marker?.message
                         ? `${p.marker?.reference || "—"}${p.marker?.message ? ` · ${p.marker.message}` : ""}`
                         : p.note || "—"}
                     </div>
-                    <div className="text-slate-500">
-                      {p.marker?.bookingDate
-                        ? new Date(`${p.marker.bookingDate}T12:00:00Z`).toLocaleDateString("de-CH")
-                        : "—"}
+                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                      <span>
+                        Import:{" "}
+                        {p.marker?.bookingDate
+                          ? new Date(`${p.marker.bookingDate}T12:00:00Z`).toLocaleDateString("de-CH")
+                          : "—"}
+                      </span>
+                      <span>
+                        Verbucht: {p.paid_at ? new Date(p.paid_at).toLocaleDateString("de-CH") : "—"}
+                      </span>
                     </div>
-                    <div className="text-slate-500">
-                      {p.paid_at ? new Date(p.paid_at).toLocaleDateString("de-CH") : "—"}
-                    </div>
-                    <div className="flex justify-end">
+                    <div className="mt-2 flex justify-end">
                       <button
                         onClick={() => undoBankImportPayment(p)}
                         disabled={bankUndoBusyPaymentId === p.id}
@@ -1539,7 +1539,56 @@ export default function Documents() {
                   </div>
                 ))}
               </div>
-            </div>
+              <div className="mt-3 hidden overflow-x-auto rounded-lg border border-slate-200 md:block">
+                <div className="min-w-[980px]">
+                  <div className="grid grid-cols-[140px_130px_1fr_150px_140px_110px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                    <div>Beleg</div>
+                    <div className="text-right">Betrag</div>
+                    <div>Marker</div>
+                    <div>Importdatum</div>
+                    <div>Verbucht am</div>
+                    <div className="text-right">Aktion</div>
+                  </div>
+                  <div className="divide-y divide-slate-200">
+                    {bankImportHistoryRows.map((p) => (
+                      <div
+                        key={`${p.id}-bank-history`}
+                        className="grid grid-cols-[140px_130px_1fr_150px_140px_110px] px-3 py-2 text-xs"
+                      >
+                        <div className="font-medium truncate min-w-0">
+                          {p.orders?.invoice_no || p.orders?.order_no || "—"}
+                        </div>
+                        <div className="text-right tabular-nums">
+                          {formatCHF(p.amount)} {p.currency || "CHF"}
+                        </div>
+                        <div className="truncate text-slate-600 min-w-0">
+                          {p.marker?.reference || p.marker?.message
+                            ? `${p.marker?.reference || "—"}${p.marker?.message ? ` · ${p.marker.message}` : ""}`
+                            : p.note || "—"}
+                        </div>
+                        <div className="text-slate-500">
+                          {p.marker?.bookingDate
+                            ? new Date(`${p.marker.bookingDate}T12:00:00Z`).toLocaleDateString("de-CH")
+                            : "—"}
+                        </div>
+                        <div className="text-slate-500">
+                          {p.paid_at ? new Date(p.paid_at).toLocaleDateString("de-CH") : "—"}
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => undoBankImportPayment(p)}
+                            disabled={bankUndoBusyPaymentId === p.id}
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                          >
+                            {bankUndoBusyPaymentId === p.id ? "Undo…" : "Rückgängig"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
         <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
@@ -1558,40 +1607,147 @@ export default function Documents() {
           ) : bankImportRuns.length === 0 ? (
             <div className="mt-2 text-xs text-slate-500">Noch keine Import-Läufe protokolliert.</div>
           ) : (
-            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-              <div className="grid grid-cols-[165px_1fr_90px_90px_90px_90px_90px_90px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
-                <div>Zeit</div>
-                <div>Datei</div>
-                <div className="text-right">Total</div>
-                <div className="text-right">Auswahl</div>
-                <div className="text-right">Verbucht</div>
-                <div className="text-right">Duplikat</div>
-                <div className="text-right">Fehler</div>
-                <div className="text-right">Hinweise</div>
-              </div>
-              <div className="divide-y divide-slate-200">
+            <>
+              <div className="mt-3 space-y-2 md:hidden">
                 {bankImportRuns.map((r) => (
-                  <div
-                    key={`${r.id}-run`}
-                    className="grid grid-cols-[165px_1fr_90px_90px_90px_90px_90px_90px] px-3 py-2 text-xs"
-                  >
-                    <div className="text-slate-500">
-                      {r.created_at ? new Date(r.created_at).toLocaleString("de-CH") : "—"}
+                  <div key={`${r.id}-run-mobile`} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium truncate">{r.source_file || "bank.csv"}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {r.created_at ? new Date(r.created_at).toLocaleDateString("de-CH") : "—"}
+                      </div>
                     </div>
-                    <div className="truncate min-w-0">{r.source_file || "bank.csv"}</div>
-                    <div className="text-right tabular-nums">{Number(r.total_rows || 0)}</div>
-                    <div className="text-right tabular-nums">{Number(r.selected_rows || 0)}</div>
-                    <div className="text-right tabular-nums text-emerald-700">{Number(r.booked_rows || 0)}</div>
-                    <div className="text-right tabular-nums text-amber-700">{Number(r.duplicate_rows || 0)}</div>
-                    <div className="text-right tabular-nums text-rose-700">{Number(r.failed_rows || 0)}</div>
-                    <div className="text-right tabular-nums">{Number(r.parse_error_count || 0)}</div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="rounded border border-slate-200 bg-white px-2 py-1">Total: {Number(r.total_rows || 0)}</div>
+                      <div className="rounded border border-slate-200 bg-white px-2 py-1">Auswahl: {Number(r.selected_rows || 0)}</div>
+                      <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">Verbucht: {Number(r.booked_rows || 0)}</div>
+                      <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">Duplikat: {Number(r.duplicate_rows || 0)}</div>
+                      <div className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700">Fehler: {Number(r.failed_rows || 0)}</div>
+                      <div className="rounded border border-slate-200 bg-white px-2 py-1">Hinweise: {Number(r.parse_error_count || 0)}</div>
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={() => setBankRunPreview(r)}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                      >
+                        Details
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
+              <div className="mt-3 hidden overflow-x-auto rounded-lg border border-slate-200 md:block">
+                <div className="min-w-[980px]">
+                  <div className="grid grid-cols-[165px_1fr_80px_80px_80px_80px_80px_80px_90px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                    <div>Zeit</div>
+                    <div>Datei</div>
+                    <div className="text-right">Total</div>
+                    <div className="text-right">Auswahl</div>
+                    <div className="text-right">Verbucht</div>
+                    <div className="text-right">Duplikat</div>
+                    <div className="text-right">Fehler</div>
+                    <div className="text-right">Hinweise</div>
+                    <div className="text-right">Details</div>
+                  </div>
+                  <div className="divide-y divide-slate-200">
+                    {bankImportRuns.map((r) => (
+                      <div
+                        key={`${r.id}-run`}
+                        className="grid grid-cols-[165px_1fr_80px_80px_80px_80px_80px_80px_90px] px-3 py-2 text-xs"
+                      >
+                        <div className="text-slate-500">
+                          {r.created_at ? new Date(r.created_at).toLocaleString("de-CH") : "—"}
+                        </div>
+                        <div className="truncate min-w-0">{r.source_file || "bank.csv"}</div>
+                        <div className="text-right tabular-nums">{Number(r.total_rows || 0)}</div>
+                        <div className="text-right tabular-nums">{Number(r.selected_rows || 0)}</div>
+                        <div className="text-right tabular-nums text-emerald-700">{Number(r.booked_rows || 0)}</div>
+                        <div className="text-right tabular-nums text-amber-700">{Number(r.duplicate_rows || 0)}</div>
+                        <div className="text-right tabular-nums text-rose-700">{Number(r.failed_rows || 0)}</div>
+                        <div className="text-right tabular-nums">{Number(r.parse_error_count || 0)}</div>
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => setBankRunPreview(r)}
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-100"
+                          >
+                            Details
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
+
+      {bankRunPreview ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Importlauf-Details</div>
+                <div className="text-sm text-slate-500">
+                  {bankRunPreview.source_file || "bank.csv"}
+                  {bankRunPreview.created_at
+                    ? ` · ${new Date(bankRunPreview.created_at).toLocaleString("de-CH")}`
+                    : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => setBankRunPreview(null)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-100"
+              >
+                Schliessen
+              </button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                Total: {Number(bankRunPreview.total_rows || 0)}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                Auswahl: {Number(bankRunPreview.selected_rows || 0)}
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
+                Verbucht: {Number(bankRunPreview.booked_rows || 0)}
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                Duplikat: {Number(bankRunPreview.duplicate_rows || 0)}
+              </div>
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                Fehler: {Number(bankRunPreview.failed_rows || 0)}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                Hinweise: {Number(bankRunPreview.parse_error_count || 0)}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                Match: {Number(bankRunPreview.matched_rows || 0)}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                Mehrdeutig: {Number(bankRunPreview.ambiguous_rows || 0)}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-medium text-slate-700">Fehler/Hinweise (Vorschau)</div>
+              {bankRunPreviewErrors.length === 0 ? (
+                <div className="mt-2 text-xs text-slate-500">Keine Hinweise im Lauf gespeichert.</div>
+              ) : (
+                <div className="mt-2 space-y-1 text-xs text-slate-700">
+                  {bankRunPreviewErrors.map((msg, idx) => (
+                    <div key={`${msg}-${idx}`} className="rounded border border-slate-200 bg-white px-2 py-1">
+                      {msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {bankImportOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
