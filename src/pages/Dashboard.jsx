@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { buildCashflowForecast } from "../lib/cashflowForecast";
 
 function prettySupabaseError(error) {
   if (!error) return "";
@@ -9,6 +10,11 @@ function prettySupabaseError(error) {
 function formatCHF(value) {
   const n = Number(value || 0);
   return n.toLocaleString("de-CH", { style: "currency", currency: "CHF" });
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("de-CH");
 }
 
 export default function Dashboard() {
@@ -32,7 +38,7 @@ export default function Dashboard() {
             .order("last_movement_at", { ascending: false }),
           supabase
             .from("purchase_orders")
-            .select("id, status, delivery_date, created_at")
+            .select("id, status, delivery_date, created_at, lines:purchase_order_lines (qty, unit_cost)")
             .order("created_at", { ascending: false }),
         ]);
         if (orderErr) throw orderErr;
@@ -52,7 +58,7 @@ export default function Dashboard() {
             .limit(8),
           supabase
             .from("open_items_aging_view")
-            .select("order_id, gross_total, aging_bucket")
+            .select("order_id, gross_total, aging_bucket, due_date")
             .order("due_date", { ascending: true }),
         ]);
         if (taskErr) throw taskErr;
@@ -116,6 +122,15 @@ export default function Dashboard() {
     return buckets;
   }, [agingRows]);
 
+  const cashflow = useMemo(() => {
+    return buildCashflowForecast({
+      agingRows,
+      purchaseOrders: purchases,
+      today: new Date(),
+      horizonDays: 30,
+    });
+  }, [agingRows, purchases]);
+
   const kpiCards = [
     { label: "Aufträge gesamt", value: orderStats.total },
     { label: "Offen", value: orderStats.open },
@@ -134,7 +149,7 @@ export default function Dashboard() {
     <div className="erp-page">
       <div>
         <h1 className="erp-page-title">Dashboard</h1>
-        <p className="erp-page-subtitle">Schneller Überblick über Aufträge, Einkauf, Aufgaben und Lager.</p>
+        <p className="erp-page-subtitle">Schneller Überblick über Aufträge, Liquidität, Einkauf, Aufgaben und Lager.</p>
       </div>
 
       {err ? (
@@ -150,7 +165,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         <div className="erp-card">
           <div className="font-semibold">Offene Posten – Fälligkeit</div>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -174,6 +189,42 @@ export default function Dashboard() {
               <div className="text-xs text-rose-700">90+ Tage</div>
               <div className="text-lg font-semibold text-rose-700">{formatCHF(agingStats["90_plus"])}</div>
             </div>
+          </div>
+        </div>
+
+        <div className="erp-card">
+          <div className="font-semibold">Liquiditätsvorschau (30 Tage)</div>
+          <div className="mt-1 text-xs text-slate-500">
+            Zeitraum bis {formatDate(cashflow.horizonEnd)}
+          </div>
+          <div className="mt-3 space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span>Erwartete Einzahlungen</span>
+              <span className="font-medium text-emerald-700">{formatCHF(cashflow.incoming30)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>davon überfällig</span>
+              <span className="font-medium text-amber-700">{formatCHF(cashflow.overdueReceivables)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Erwartete Auszahlungen</span>
+              <span className="font-medium text-rose-700">{formatCHF(cashflow.outgoing30)}</span>
+            </div>
+            <div className="h-px bg-slate-200" />
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Netto-Prognose</span>
+              <span
+                className={`text-base font-semibold ${
+                  cashflow.net30 < 0 ? "text-rose-700" : "text-emerald-700"
+                }`}
+              >
+                {formatCHF(cashflow.net30)}
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            Offene Einkaufsaufträge: {cashflow.openPurchaseOrders} · ohne Liefertermin:{" "}
+            {cashflow.missingDeliveryDate}
           </div>
         </div>
 
