@@ -1,6 +1,13 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DunningLetterPreview from "../components/DunningLetterPreview";
+import {
+  buildBankImportMarker,
+  buildPaymentMatches,
+  parseBankCsv,
+  resolvePaymentMatch,
+  summarizePaymentMatches,
+} from "../lib/paymentImport";
 
 function prettySupabaseError(error) {
   if (!error) return "";
@@ -71,6 +78,29 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function bankMatchLabel(row) {
+  if (!row) return "—";
+  if (row.status === "matched" && row.strategy === "invoice_ref") return "Match via Rechnungsnr.";
+  if (row.status === "matched" && row.strategy === "order_ref") return "Match via Auftragsnr.";
+  if (row.status === "matched" && row.strategy === "amount") return "Match via Betrag";
+  if (row.status === "ambiguous") return "Mehrdeutig";
+  if (row.status === "unmatched") return "Kein Match";
+  if (row.status === "ignored") return "Ignoriert (kein Zahlungseingang)";
+  if (row.status === "invalid") return "Ungültige Zeile";
+  return "—";
+}
+
+function bankMatchTone(row) {
+  if (!row) return "border-slate-200 bg-white text-slate-700";
+  if (row.isManual || row.effectiveStatus === "matched" || row.status === "matched") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (row.status === "ambiguous") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (row.status === "unmatched") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (row.status === "ignored") return "border-slate-200 bg-slate-100 text-slate-600";
+  return "border-red-200 bg-red-50 text-red-700";
+}
+
 export default function Documents() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -86,6 +116,7 @@ export default function Documents() {
   const [savingNoteId, setSavingNoteId] = useState(null);
   const [payments, setPayments] = useState([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentTotalsByOrderId, setPaymentTotalsByOrderId] = useState({});
   const [historyOpenId, setHistoryOpenId] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -96,7 +127,19 @@ export default function Documents() {
   const [pdfOrderId, setPdfOrderId] = useState(null);
   const [overdueBusy, setOverdueBusy] = useState(false);
   const [autoDunningBusy, setAutoDunningBusy] = useState(false);
+  const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [bankFileName, setBankFileName] = useState("");
+  const [bankImportRows, setBankImportRows] = useState([]);
+  const [bankImportSummary, setBankImportSummary] = useState(
+    () => summarizePaymentMatches([])
+  );
+  const [bankImportErrors, setBankImportErrors] = useState([]);
+  const [bankImportBusy, setBankImportBusy] = useState(false);
+  const [bankApplyBusy, setBankApplyBusy] = useState(false);
+  const [bankSelectedById, setBankSelectedById] = useState({});
+  const [bankManualDocByRowId, setBankManualDocByRowId] = useState({});
   const printRef = useRef(null);
+  const bankFileRef = useRef(null);
   const deferredQ = useDeferredValue(q);
 
   async function loadOrdersList() {
@@ -116,20 +159,39 @@ export default function Documents() {
     setInfo("");
   }
 
+  async function loadPaymentsSnapshot() {
+    setPaymentsLoading(true);
+    const [{ data: payRows, error: payErr }, { data: allPayRows, error: allPayErr }] =
+      await Promise.all([
+        supabase
+          .from("payments")
+          .select("id, order_id, amount, currency, method, paid_at, note, orders:orders ( invoice_no, order_no )")
+          .order("paid_at", { ascending: false })
+          .limit(20),
+        supabase.from("payments").select("order_id, amount"),
+      ]);
+
+    setPaymentsLoading(false);
+    if (payErr) throw payErr;
+    if (allPayErr) throw allPayErr;
+
+    setPayments(payRows || []);
+    const totals = (allPayRows || []).reduce((acc, row) => {
+      const orderId = row.order_id;
+      if (!orderId) return acc;
+      acc[orderId] = Number(acc[orderId] || 0) + Number(row.amount || 0);
+      return acc;
+    }, {});
+    setPaymentTotalsByOrderId(totals);
+  }
+
   useEffect(() => {
     async function load() {
       setLoading(true);
       clearMessages();
       try {
         await loadOrdersList();
-        setPaymentsLoading(true);
-        const { data: payRows } = await supabase
-          .from("payments")
-          .select("id, order_id, amount, currency, method, paid_at, orders:orders ( invoice_no, order_no )")
-          .order("paid_at", { ascending: false })
-          .limit(20);
-        setPayments(payRows || []);
-        setPaymentsLoading(false);
+        await loadPaymentsSnapshot();
         const { data: tplRows } = await supabase
           .from("dunning_templates")
           .select("id, level, title, body")
@@ -214,6 +276,53 @@ export default function Documents() {
     const partial = opRows.filter((r) => r.payment_status === "partial").reduce((sum, r) => sum + Number(r.gross_total || 0), 0);
     return { open, overdue, partial, total: open + overdue + partial };
   }, [opRows]);
+
+  const bankMatchableDocs = useMemo(() => {
+    return indexedRows
+      .filter(
+        (r) =>
+          r.document_type !== "credit_note" &&
+          !r.document_archived &&
+          (r.payment_status === "open" || r.payment_status === "partial" || r.payment_status === "overdue")
+      )
+      .map((r) => {
+        const paid = Number(paymentTotalsByOrderId[r.id] || 0);
+        const gross = Number(r.gross_total || 0);
+        const outstanding = Math.max(gross - paid, 0);
+        return {
+          id: r.id,
+          invoice_no: r.invoice_no,
+          order_no: r.order_no,
+          customer_name: r.customers?.company_name || "",
+          outstandingAmount: outstanding,
+        };
+      })
+      .filter((r) => r.outstandingAmount > 0.01);
+  }, [indexedRows, paymentTotalsByOrderId]);
+
+  const bankRowsResolved = useMemo(() => {
+    return bankImportRows.map((row) =>
+      resolvePaymentMatch({
+        row,
+        manualDocId: bankManualDocByRowId[row.id],
+        openDocuments: bankMatchableDocs,
+      })
+    );
+  }, [bankImportRows, bankManualDocByRowId, bankMatchableDocs]);
+
+  const bankBookableRows = useMemo(() => {
+    return bankRowsResolved.filter(
+      (row) => row.effectiveStatus === "matched" && row.resolvedMatch?.id
+    );
+  }, [bankRowsResolved]);
+
+  const bankSelectedCount = useMemo(() => {
+    return bankBookableRows.filter((row) => bankSelectedById[row.id]).length;
+  }, [bankBookableRows, bankSelectedById]);
+
+  const bankManualAssignedCount = useMemo(() => {
+    return bankRowsResolved.filter((row) => row.isManual).length;
+  }, [bankRowsResolved]);
 
   const openOrder = useCallback((orderId, action, docType) => {
     if (!orderId) return;
@@ -311,6 +420,102 @@ export default function Documents() {
     downloadCsv(`zahlungen_${new Date().toISOString().slice(0, 10)}.csv`, rowsExport);
   }
 
+  async function handleBankFile(file) {
+    if (!file) return;
+    setBankImportBusy(true);
+    setBankImportErrors([]);
+    setBankImportRows([]);
+    setBankImportSummary(summarizePaymentMatches([]));
+    setBankSelectedById({});
+    setBankManualDocByRowId({});
+    setBankFileName(file.name || "bank.csv");
+
+    try {
+      const text = await file.text();
+      const parsed = parseBankCsv(text);
+      const matched = buildPaymentMatches({
+        bankRows: parsed.rows,
+        openDocuments: bankMatchableDocs,
+        amountTolerance: 0.05,
+      });
+      const summary = summarizePaymentMatches(matched);
+      const selected = matched.reduce((acc, row) => {
+        if (row.status === "matched") acc[row.id] = true;
+        return acc;
+      }, {});
+
+      setBankImportErrors(parsed.errors);
+      setBankImportRows(matched);
+      setBankImportSummary(summary);
+      setBankSelectedById(selected);
+      setBankManualDocByRowId({});
+    } catch (e) {
+      setBankImportErrors([prettySupabaseError(e)]);
+    } finally {
+      setBankImportBusy(false);
+    }
+  }
+
+  async function applySelectedBankRows() {
+    const selectedRows = bankBookableRows.filter((row) => bankSelectedById[row.id]);
+
+    if (selectedRows.length === 0) {
+      setErr("Keine passenden, ausgewählten Matches zum Verbuchen.");
+      return;
+    }
+
+    setBankApplyBusy(true);
+    clearMessages();
+
+    let booked = 0;
+    let duplicates = 0;
+    let failed = 0;
+
+    for (const row of selectedRows) {
+      const marker = buildBankImportMarker(row);
+      const { data: dupRows, error: dupErr } = await supabase
+        .from("payments")
+        .select("id")
+        .eq("order_id", row.resolvedMatch.id)
+        .eq("note", marker)
+        .limit(1);
+
+      if (dupErr) {
+        failed += 1;
+        continue;
+      }
+
+      if ((dupRows || []).length > 0) {
+        duplicates += 1;
+        continue;
+      }
+
+      const paidAt = row.bookingDate ? `${row.bookingDate}T12:00:00Z` : new Date().toISOString();
+      const { error } = await supabase.rpc("apply_payment", {
+        p_order_id: row.resolvedMatch.id,
+        p_amount: Number(row.amount),
+        p_method: "Bankimport",
+        p_paid_at: paidAt,
+        p_note: marker,
+      });
+
+      if (error) failed += 1;
+      else booked += 1;
+    }
+
+    setBankApplyBusy(false);
+
+    try {
+      await loadOrdersList();
+      await loadPaymentsSnapshot();
+    } catch (e) {
+      setErr(prettySupabaseError(e));
+      return;
+    }
+
+    setInfo(`Bankimport abgeschlossen: ${booked} verbucht, ${duplicates} Duplikate, ${failed} Fehler.`);
+  }
+
   async function bumpDunning(orderId, currentLevel) {
     if (!orderId) return;
     const { error } = await supabase.rpc("bump_dunning_level", {
@@ -399,12 +604,7 @@ export default function Documents() {
     }
     // refresh orders + payments
     await loadOrdersList();
-    const { data: payRows } = await supabase
-      .from("payments")
-      .select("id, order_id, amount, currency, method, paid_at, orders:orders ( invoice_no, order_no )")
-      .order("paid_at", { ascending: false })
-      .limit(20);
-    setPayments(payRows || []);
+    await loadPaymentsSnapshot();
     setInfo("Zahlung verbucht.");
   }
 
@@ -574,6 +774,21 @@ export default function Documents() {
             title="Mahnstufe für überfällige Belege automatisch erhöhen"
           >
             {autoDunningBusy ? "Mahne…" : `Auto‑Mahnen (${overdueRows.length})`}
+          </button>
+          <button
+            onClick={() => {
+              setBankImportOpen(true);
+              setBankImportErrors([]);
+              setBankImportRows([]);
+              setBankImportSummary(summarizePaymentMatches([]));
+              setBankSelectedById({});
+              setBankManualDocByRowId({});
+              setBankFileName("");
+            }}
+            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 hover:bg-emerald-100"
+            title="CSV mit Banktransaktionen importieren und auf offene Belege matchen"
+          >
+            Bankabgleich (CSV)
           </button>
           <button
             onClick={handleExport}
@@ -1139,6 +1354,213 @@ export default function Documents() {
           </div>
         </div>
       </div>
+
+      {bankImportOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-6xl rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Bankabgleich (CSV)</div>
+                <div className="text-sm text-slate-500">
+                  CSV importieren, offene Belege automatisch matchen und Zahlungen als Batch verbuchen.
+                </div>
+              </div>
+              <button
+                onClick={() => setBankImportOpen(false)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-100"
+              >
+                Schliessen
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <input
+                ref={bankFileRef}
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  await handleBankFile(file);
+                }}
+              />
+              <button
+                onClick={() => bankFileRef.current?.click()}
+                disabled={bankImportBusy}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-100 disabled:opacity-60"
+              >
+                {bankImportBusy ? "Lade…" : "CSV auswählen"}
+              </button>
+              <div className="text-sm text-slate-600">
+                {bankFileName || "Keine Datei ausgewählt"}
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-6 text-xs">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">Total: {bankImportSummary.total}</div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
+                Match: {bankImportSummary.matched}
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                Mehrdeutig: {bankImportSummary.ambiguous}
+              </div>
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                Kein Match: {bankImportSummary.unmatched}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-slate-700">
+                Ignoriert: {bankImportSummary.ignored}
+              </div>
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                Ungültig: {bankImportSummary.invalid}
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-slate-500">
+              Manuell zugeordnet: {bankManualAssignedCount}
+            </div>
+
+            {bankImportErrors.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="font-medium">Import-Hinweise:</div>
+                <div className="mt-1 space-y-1">
+                  {bankImportErrors.slice(0, 5).map((msg, idx) => (
+                    <div key={`${msg}-${idx}`}>{msg}</div>
+                  ))}
+                  {bankImportErrors.length > 5 ? (
+                    <div>… und {bankImportErrors.length - 5} weitere.</div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-slate-500">
+                Ausgewählt: {bankSelectedCount}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    setBankSelectedById(
+                      bankBookableRows.reduce((acc, row) => {
+                        acc[row.id] = true;
+                        return acc;
+                      }, {})
+                    )
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                >
+                  Alle Matches wählen
+                </button>
+                <button
+                  onClick={() => setBankSelectedById({})}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                >
+                  Auswahl leeren
+                </button>
+                <button
+                  onClick={applySelectedBankRows}
+                  disabled={bankApplyBusy || bankSelectedCount === 0}
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+                >
+                  {bankApplyBusy ? "Verbuche…" : "Ausgewählte verbuchen"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 max-h-[46vh] overflow-auto rounded-xl border border-slate-200">
+              <div className="min-w-[1360px]">
+                <div className="grid grid-cols-[34px_90px_120px_1fr_1fr_170px_190px_260px] gap-x-3 bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                  <div />
+                  <div>Zeile</div>
+                  <div className="text-right">Betrag</div>
+                  <div>Referenz</div>
+                  <div>Mitteilung</div>
+                  <div>Status</div>
+                  <div>Vorschlag</div>
+                  <div>Manuelle Zuordnung</div>
+                </div>
+                <div className="divide-y divide-slate-200">
+                  {bankImportRows.length === 0 ? (
+                    <div className="px-3 py-4 text-sm text-slate-500">Noch keine Importdaten.</div>
+                  ) : (
+                    bankRowsResolved.map((row) => (
+                      <div
+                        key={row.id}
+                        className="grid grid-cols-[34px_90px_120px_1fr_1fr_170px_190px_260px] gap-x-3 px-3 py-2 text-xs"
+                      >
+                        <div className="pt-1">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(bankSelectedById[row.id])}
+                            disabled={!(row.effectiveStatus === "matched" && row.resolvedMatch?.id)}
+                            onChange={(e) =>
+                              setBankSelectedById((prev) => ({
+                                ...prev,
+                                [row.id]: e.target.checked,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          #{row.rowNo}
+                          <div className="text-[11px] text-slate-500">{row.bookingDate || "—"}</div>
+                        </div>
+                        <div className="text-right font-medium tabular-nums">
+                          {row.amount === null ? "—" : formatCHF(row.amount)}
+                        </div>
+                        <div className="truncate">{row.reference || "—"}</div>
+                        <div className="truncate text-slate-600">{row.message || row.counterparty || "—"}</div>
+                        <div>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 ${bankMatchTone(row)}`}
+                          >
+                            {row.isManual ? "Manuell zugeordnet" : bankMatchLabel(row)}
+                          </span>
+                        </div>
+                        <div className="truncate text-slate-700">
+                          {row.resolvedMatch?.invoice_no || row.resolvedMatch?.order_no || "—"}
+                          {row.resolvedMatch?.customer_name ? ` · ${row.resolvedMatch.customer_name}` : ""}
+                        </div>
+                        <div>
+                          <select
+                            value={bankManualDocByRowId[row.id] || ""}
+                            disabled={row.status === "ignored" || row.status === "invalid"}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setBankManualDocByRowId((prev) => ({
+                                ...prev,
+                                [row.id]: next,
+                              }));
+                              if (next) {
+                                setBankSelectedById((prev) => ({ ...prev, [row.id]: true }));
+                              }
+                            }}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                          >
+                            <option value="">
+                              {row.status === "matched" ? "Auto-Match behalten" : "— auswählen —"}
+                            </option>
+                            {bankMatchableDocs.map((doc) => (
+                              <option key={`${row.id}-${doc.id}`} value={doc.id}>
+                                {(doc.invoice_no || doc.order_no || "—") +
+                                  " · " +
+                                  doc.customer_name +
+                                  " · " +
+                                  formatCHF(doc.outstandingAmount)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {pdfOrderId ? (
         <div
           ref={printRef}

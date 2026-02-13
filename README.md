@@ -41,6 +41,15 @@ Im `Dashboard` gibt es jetzt eine **Liquiditätsvorschau (30 Tage)**:
 - erwartete Auszahlungen aus offenen/bestellten Einkaufsaufträgen
 - Netto-Prognose und Hinweis auf Einkaufsaufträge ohne Liefertermin
 
+## Bankabgleich CSV (Neu)
+
+Im Modul `Belege` gibt es jetzt den Einstieg **Bankabgleich (CSV)**:
+
+- CSV aus Bankexport laden (Buchungsdatum, Betrag, Referenz/Mitteilung)
+- automatische Zuordnung zu offenen Belegen (Rechnungsnr., Auftragsnr., Betrag)
+- manuelle Zuordnung für mehrdeutige oder fehlende Treffer direkt im Modal
+- Batch-Verbuchung der ausgewählten Matches via `apply_payment`
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
