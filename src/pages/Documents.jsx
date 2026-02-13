@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { supabase } from "../lib/supabaseClient";
 import DunningLetterPreview from "../components/DunningLetterPreview";
 import {
+  buildBankImportRunReport,
   buildBankImportMarker,
   buildPaymentMatches,
   isBankImportDuplicateError,
@@ -141,6 +142,8 @@ export default function Documents() {
   const [bankImportBusy, setBankImportBusy] = useState(false);
   const [bankApplyBusy, setBankApplyBusy] = useState(false);
   const [bankUndoBusyPaymentId, setBankUndoBusyPaymentId] = useState("");
+  const [bankImportRuns, setBankImportRuns] = useState([]);
+  const [bankImportRunsLoading, setBankImportRunsLoading] = useState(false);
   const [bankSelectedById, setBankSelectedById] = useState({});
   const [bankManualDocByRowId, setBankManualDocByRowId] = useState({});
   const printRef = useRef(null);
@@ -190,6 +193,30 @@ export default function Documents() {
     setPaymentTotalsByOrderId(totals);
   }
 
+  async function loadBankImportRuns() {
+    setBankImportRunsLoading(true);
+    const { data, error } = await supabase
+      .from("bank_import_runs")
+      .select(
+        "id, created_at, source_file, total_rows, matched_rows, ambiguous_rows, unmatched_rows, ignored_rows, invalid_rows, selected_rows, booked_rows, duplicate_rows, failed_rows, parse_error_count, errors_preview"
+      )
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setBankImportRunsLoading(false);
+
+    if (error) {
+      const code = String(error.code || "");
+      if (code === "42P01" || code === "PGRST205") {
+        setBankImportRuns([]);
+        return { missingRelation: true };
+      }
+      throw error;
+    }
+
+    setBankImportRuns(data || []);
+    return { missingRelation: false };
+  }
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -197,6 +224,7 @@ export default function Documents() {
       try {
         await loadOrdersList();
         await loadPaymentsSnapshot();
+        await loadBankImportRuns();
         const { data: tplRows } = await supabase
           .from("dunning_templates")
           .select("id, level, title, body")
@@ -434,6 +462,25 @@ export default function Documents() {
     downloadCsv(`zahlungen_${new Date().toISOString().slice(0, 10)}.csv`, rowsExport);
   }
 
+  function exportBankImportRuns() {
+    const rowsExport = (bankImportRuns || []).map((r) => ({
+      run_at: r.created_at,
+      source_file: r.source_file,
+      total_rows: r.total_rows,
+      matched_rows: r.matched_rows,
+      ambiguous_rows: r.ambiguous_rows,
+      unmatched_rows: r.unmatched_rows,
+      ignored_rows: r.ignored_rows,
+      invalid_rows: r.invalid_rows,
+      selected_rows: r.selected_rows,
+      booked_rows: r.booked_rows,
+      duplicate_rows: r.duplicate_rows,
+      failed_rows: r.failed_rows,
+      parse_error_count: r.parse_error_count,
+    }));
+    downloadCsv(`bankimport_runs_${new Date().toISOString().slice(0, 10)}.csv`, rowsExport);
+  }
+
   async function handleBankFile(file) {
     if (!file) return;
     setBankImportBusy(true);
@@ -521,17 +568,41 @@ export default function Documents() {
       }
     }
 
+    const runReport = buildBankImportRunReport({
+      sourceFile: bankFileName || "bank.csv",
+      summary: bankImportSummary,
+      selectedCount: selectedRows.length,
+      bookedCount: booked,
+      duplicateCount: duplicates,
+      failedCount: failed,
+      parseErrors: bankImportErrors,
+      meta: {
+        manual_assigned_count: selectedRows.filter((row) => row.isManual).length,
+      },
+    });
+    const { error: runInsertErr } = await supabase.from("bank_import_runs").insert(runReport);
+
     setBankApplyBusy(false);
 
+    let runsRefreshWarning = "";
     try {
       await loadOrdersList();
       await loadPaymentsSnapshot();
+      const runLoad = await loadBankImportRuns();
+      if (runLoad?.missingRelation) {
+        runsRefreshWarning = " Protokollliste nicht verfügbar (Migration fehlt).";
+      }
     } catch (e) {
       setErr(prettySupabaseError(e));
       return;
     }
 
-    setInfo(`Bankimport abgeschlossen: ${booked} verbucht, ${duplicates} Duplikate, ${failed} Fehler.`);
+    const runInsertWarning = runInsertErr
+      ? ` Laufprotokoll nicht gespeichert (${prettySupabaseError(runInsertErr)}).`
+      : "";
+    setInfo(
+      `Bankimport abgeschlossen: ${booked} verbucht, ${duplicates} Duplikate, ${failed} Fehler.${runInsertWarning}${runsRefreshWarning}`
+    );
   }
 
   async function undoBankImportPayment(paymentRow) {
@@ -1465,6 +1536,55 @@ export default function Documents() {
                         {bankUndoBusyPaymentId === p.id ? "Undo…" : "Rückgängig"}
                       </button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Bankimport-Run-Report (letzte 20)</div>
+            <button
+              onClick={exportBankImportRuns}
+              disabled={bankImportRuns.length === 0}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-60"
+            >
+              Run-Report CSV
+            </button>
+          </div>
+          {bankImportRunsLoading ? (
+            <div className="mt-2 text-xs text-slate-500">Lade…</div>
+          ) : bankImportRuns.length === 0 ? (
+            <div className="mt-2 text-xs text-slate-500">Noch keine Import-Läufe protokolliert.</div>
+          ) : (
+            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+              <div className="grid grid-cols-[165px_1fr_90px_90px_90px_90px_90px_90px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                <div>Zeit</div>
+                <div>Datei</div>
+                <div className="text-right">Total</div>
+                <div className="text-right">Auswahl</div>
+                <div className="text-right">Verbucht</div>
+                <div className="text-right">Duplikat</div>
+                <div className="text-right">Fehler</div>
+                <div className="text-right">Hinweise</div>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {bankImportRuns.map((r) => (
+                  <div
+                    key={`${r.id}-run`}
+                    className="grid grid-cols-[165px_1fr_90px_90px_90px_90px_90px_90px] px-3 py-2 text-xs"
+                  >
+                    <div className="text-slate-500">
+                      {r.created_at ? new Date(r.created_at).toLocaleString("de-CH") : "—"}
+                    </div>
+                    <div className="truncate min-w-0">{r.source_file || "bank.csv"}</div>
+                    <div className="text-right tabular-nums">{Number(r.total_rows || 0)}</div>
+                    <div className="text-right tabular-nums">{Number(r.selected_rows || 0)}</div>
+                    <div className="text-right tabular-nums text-emerald-700">{Number(r.booked_rows || 0)}</div>
+                    <div className="text-right tabular-nums text-amber-700">{Number(r.duplicate_rows || 0)}</div>
+                    <div className="text-right tabular-nums text-rose-700">{Number(r.failed_rows || 0)}</div>
+                    <div className="text-right tabular-nums">{Number(r.parse_error_count || 0)}</div>
                   </div>
                 ))}
               </div>

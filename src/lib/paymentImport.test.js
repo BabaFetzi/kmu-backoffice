@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBankImportRunReport,
   buildBankImportMarker,
   buildPaymentMatches,
   isBankImportDuplicateError,
@@ -176,5 +177,58 @@ describe("payment import helpers", () => {
     expect(isBankImportPayment({ method: "Überweisung", note: "BANKCSV|2026-01-01|1.00|A|B" })).toBe(false);
     expect(isBankImportPayment({ method: "Bankimport", note: "MANUAL" })).toBe(false);
     expect(parseBankImportMarker("BANKCSV|BROKEN")).toBeNull();
+  });
+
+  it("builds a normalized bank import run report payload", () => {
+    const report = buildBankImportRunReport({
+      sourceFile: "bank-export-feb.csv",
+      summary: { total: 12, matched: 8, ambiguous: 1, unmatched: 2, ignored: 1, invalid: 0 },
+      selectedCount: 9,
+      bookedCount: 7,
+      duplicateCount: 1,
+      failedCount: 1,
+      parseErrors: ["Zeile 5: Datum fehlt"],
+      meta: { trigger: "manual" },
+    });
+
+    expect(report).toEqual({
+      source_file: "bank-export-feb.csv",
+      total_rows: 12,
+      matched_rows: 8,
+      ambiguous_rows: 1,
+      unmatched_rows: 2,
+      ignored_rows: 1,
+      invalid_rows: 0,
+      selected_rows: 9,
+      booked_rows: 7,
+      duplicate_rows: 1,
+      failed_rows: 1,
+      parse_error_count: 1,
+      errors_preview: ["Zeile 5: Datum fehlt"],
+      meta: { trigger: "manual" },
+    });
+  });
+
+  it("sanitizes invalid run report counts and meta", () => {
+    const report = buildBankImportRunReport({
+      sourceFile: "  report.csv  ",
+      summary: { total: -1, matched: NaN },
+      selectedCount: "x",
+      bookedCount: 2.9,
+      duplicateCount: null,
+      failedCount: undefined,
+      parseErrors: ["", " A ", "B".repeat(300)],
+      meta: "broken",
+    });
+
+    expect(report.total_rows).toBe(0);
+    expect(report.matched_rows).toBe(0);
+    expect(report.selected_rows).toBe(0);
+    expect(report.booked_rows).toBe(2);
+    expect(report.duplicate_rows).toBe(0);
+    expect(report.failed_rows).toBe(0);
+    expect(report.parse_error_count).toBe(3);
+    expect(report.errors_preview).toHaveLength(2);
+    expect(report.meta).toEqual({});
   });
 });
