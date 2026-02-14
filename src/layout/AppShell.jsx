@@ -7,13 +7,13 @@ function cx(...classes) {
 function Brand({ collapsed }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/70 bg-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+      <div className="brand-logo-shell">
         <img src="/logo-backoffice.png" alt="Backoffice Logo" className="h-8 w-8 object-contain" />
       </div>
       {!collapsed && (
         <div>
-          <p className="text-sm font-semibold tracking-tight text-slate-900">KMU BackOffice</p>
-          <p className="text-xs text-slate-500">ERP Workspace</p>
+          <p className="text-sm font-semibold tracking-tight text-white">KMU BackOffice</p>
+          <p className="text-xs text-slate-300">ERP Workspace</p>
         </div>
       )}
     </div>
@@ -32,27 +32,29 @@ export default function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [workspaceSearch, setWorkspaceSearch] = useState("");
 
   const nav = useMemo(
     () => [
-      { key: "dashboard", label: "Dashboard", icon: "⌂", group: "Analyse" },
-      { key: "reports", label: "Auswertungen", icon: "∑", group: "Analyse" },
-      { key: "customers", label: "Kunden", icon: "👤", group: "Stammdaten" },
-      { key: "suppliers", label: "Lieferanten", icon: "🏭", group: "Stammdaten" },
-      { key: "items", label: "Artikel", icon: "▦", group: "Stammdaten" },
-      { key: "settings", label: "Stammdaten", icon: "🏢", group: "Stammdaten" },
-      { key: "orders", label: "Aufträge", icon: "⎘", group: "Prozesse" },
-      { key: "purchases", label: "Einkauf", icon: "⇣", group: "Prozesse" },
-      { key: "documents", label: "Belege", icon: "🧾", group: "Prozesse" },
-      { key: "tasks", label: "Aufgaben", icon: "✓", group: "Organisation" },
-      { key: "schedules", label: "Stundenplan", icon: "🕒", group: "Organisation" },
-      { key: "audit", label: "Audit", icon: "≡", group: "System" },
-      { key: "admin", label: "Admin", icon: "⚙︎", group: "System" },
+      { key: "dashboard", label: "Dashboard", icon: "DA", group: "Analyse" },
+      { key: "reports", label: "Auswertungen", icon: "RE", group: "Analyse" },
+      { key: "customers", label: "Kunden", icon: "KU", group: "Stammdaten" },
+      { key: "suppliers", label: "Lieferanten", icon: "LI", group: "Stammdaten" },
+      { key: "items", label: "Artikel", icon: "AR", group: "Stammdaten" },
+      { key: "settings", label: "Stammdaten", icon: "ST", group: "Stammdaten" },
+      { key: "orders", label: "Aufträge", icon: "AU", group: "Prozesse" },
+      { key: "purchases", label: "Einkauf", icon: "EK", group: "Prozesse" },
+      { key: "documents", label: "Belege", icon: "BE", group: "Prozesse" },
+      { key: "tasks", label: "Aufgaben", icon: "TA", group: "Organisation" },
+      { key: "schedules", label: "Stundenplan", icon: "SZ", group: "Organisation" },
+      { key: "audit", label: "Audit", icon: "AD", group: "System" },
+      { key: "admin", label: "Admin", icon: "AM", group: "System" },
     ],
     []
   );
 
   const activeNav = nav.find((n) => n.key === active);
+
   const navGroups = useMemo(() => {
     const groups = [];
     for (const entry of nav) {
@@ -68,87 +70,88 @@ export default function AppShell({
     setMobileOpen(false);
   }
 
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_8%,rgba(255,255,255,0.7),transparent_36%),radial-gradient(circle_at_92%_6%,rgba(158,194,255,0.34),transparent_40%),radial-gradient(circle_at_48%_100%,rgba(157,216,188,0.22),transparent_42%)]" />
+  function handleTopSearchKeyDown(event) {
+    if (event.key !== "Enter") return;
+    const term = workspaceSearch.trim().toLowerCase();
+    if (!term) return;
+    const match = nav.find((item) => item.label.toLowerCase().includes(term));
+    if (match) {
+      handleNavigate(match.key);
+      setWorkspaceSearch("");
+    }
+  }
 
-      <div className="relative grid min-h-screen lg:grid-cols-[300px_1fr]">
+  return (
+    <div className="canva-root">
+      <div className="canva-background" />
+
+      <div className="canva-app-frame" style={{ "--sidebar-width": collapsed ? "98px" : "296px" }}>
         {mobileOpen && (
           <button
             onClick={() => setMobileOpen(false)}
-            className="fixed inset-0 z-30 bg-slate-900/20 backdrop-blur-[2px] lg:hidden"
-            aria-label="Navigation schließen"
+            className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-[2px] lg:hidden"
+            aria-label="Navigation schliessen"
           />
         )}
 
-        <aside
-          className={cx(
-            "glass-surface fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-slate-200 transition-transform duration-300 lg:sticky lg:top-0",
-            collapsed ? "w-[92px]" : "w-[292px]",
-            mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          )}
-        >
-          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-4">
+        <aside className={cx("canva-sidebar", collapsed && "is-collapsed", mobileOpen && "is-mobile-open")}>
+          <div className="canva-sidebar-head">
             <Brand collapsed={collapsed} />
             <button
-              className="ml-auto hidden rounded-lg border border-slate-200 bg-white/70 px-2 py-1 text-xs text-slate-600 hover:bg-white lg:block"
-              onClick={() => setCollapsed((v) => !v)}
-              title={collapsed ? "Sidebar öffnen" : "Sidebar einklappen"}
+              className="canva-icon-btn hidden lg:inline-flex"
+              onClick={() => setCollapsed((value) => !value)}
+              title={collapsed ? "Sidebar oeffnen" : "Sidebar einklappen"}
+              aria-label={collapsed ? "Sidebar oeffnen" : "Sidebar einklappen"}
             >
               {collapsed ? "→" : "←"}
             </button>
             <button
               onClick={() => setMobileOpen(false)}
-              className="rounded-lg border border-slate-200 bg-white/70 px-2 py-1 text-xs text-slate-600 lg:hidden"
-              aria-label="Schließen"
+              className="canva-icon-btn lg:hidden"
+              aria-label="Navigation schliessen"
             >
-              ✕
+              ×
             </button>
           </div>
 
-          <div className="px-3 py-3">
-            <label className={cx("text-[11px] uppercase tracking-[0.18em] text-slate-400", collapsed && "hidden")}>Schnellfilter</label>
+          <div className={cx("canva-sidebar-tools", collapsed && "is-collapsed")}>
+            {!collapsed && <p className="canva-sidebar-label">Schnellzugriff</p>}
+            <button className="canva-primary-btn" onClick={() => handleNavigate("orders")}>
+              {collapsed ? "+" : "Neuer Auftrag"}
+            </button>
+
             <input
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={collapsed ? "⌕" : "Modul suchen"}
-              className={cx(
-                "mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-slate-300",
-                collapsed && "px-0 text-center"
-              )}
+              className={cx("canva-sidebar-search", collapsed && "is-collapsed")}
+              aria-label="Modul suchen"
             />
           </div>
 
-          <nav className="flex-1 space-y-3 overflow-y-auto px-2 pb-3">
+          <nav className="canva-nav-scroll" aria-label="Hauptnavigation">
             {navGroups.map((group) => {
               const filteredItems = group.items.filter((item) =>
                 item.label.toLowerCase().includes(searchValue.trim().toLowerCase())
               );
+
               if (!filteredItems.length) return null;
 
               return (
-                <div key={group.name} className="space-y-1">
-                  {!collapsed && (
-                    <p className="px-2 pt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
-                      {group.name}
-                    </p>
-                  )}
-
+                <div key={group.name} className="space-y-1.5">
+                  {!collapsed && <p className="canva-nav-group-label">{group.name}</p>}
                   {filteredItems.map((item) => {
                     const isActive = active === item.key;
                     return (
                       <button
                         key={item.key}
                         onClick={() => handleNavigate(item.key)}
-                        className={cx(
-                          "w-full items-center rounded-xl px-3 py-2.5 text-left transition",
-                          collapsed ? "flex justify-center" : "flex gap-3",
-                          isActive ? "glass-nav-active" : "glass-nav"
-                        )}
+                        className={cx("canva-nav-item", isActive && "is-active", collapsed && "is-collapsed")}
                         title={collapsed ? item.label : undefined}
+                        aria-label={item.label}
                       >
-                        <span className="inline-flex w-8 justify-center text-sm">{item.icon}</span>
-                        {!collapsed && <span className="text-sm font-medium tracking-tight text-slate-700">{item.label}</span>}
+                        <span className="canva-nav-icon">{item.icon}</span>
+                        {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
                       </button>
                     );
                   })}
@@ -157,59 +160,70 @@ export default function AppShell({
             })}
           </nav>
 
-          <div className="border-t border-slate-200 p-3">
+          <div className="canva-sidebar-foot">
             {!collapsed && (
-              <div className="mb-2 rounded-xl border border-slate-200 bg-white/60 px-3 py-2 text-xs text-slate-500">
-                Eingeloggt als
-                <div className="truncate pt-0.5 text-sm font-medium text-slate-700">{userEmail || "-"}</div>
+              <div className="canva-user-chip">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Angemeldet</p>
+                <p className="truncate text-sm font-medium text-white">{userEmail || "-"}</p>
               </div>
             )}
-            <button onClick={onLogout} className="glass-surface w-full rounded-xl px-3 py-2 text-sm font-medium text-slate-700">
+            <button onClick={onLogout} className="canva-ghost-btn">
               Logout
             </button>
           </div>
         </aside>
 
-        <main className="min-h-screen">
-          <header className="glass-elevated sticky top-0 z-20 border-b border-slate-200">
-            <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5 lg:px-6">
+        <main className="canva-main">
+          <header className="canva-topbar">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobileOpen(true)}
-                className="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-700 lg:hidden"
+                className="canva-icon-btn lg:hidden"
+                aria-label="Navigation oeffnen"
               >
-                Menü
+                ☰
               </button>
 
               <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Aktives Modul</p>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Aktives Modul</p>
                 <p className="text-sm font-semibold text-slate-900">{activeNav?.label || active}</p>
               </div>
+            </div>
 
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/65 px-2 py-1.5">
-                  <label className="text-xs text-slate-500">UI</label>
-                  <select
-                    value={glassIntensity}
-                    onChange={(e) => onGlassIntensityChange?.(e.target.value)}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
-                  >
-                    <option value="subtle">subtil</option>
-                    <option value="medium">mittel</option>
-                    <option value="strong">stark</option>
-                    <option value="ultra">ultra</option>
-                  </select>
-                </div>
+            <div className="canva-top-search-wrap">
+              <input
+                value={workspaceSearch}
+                onChange={(e) => setWorkspaceSearch(e.target.value)}
+                onKeyDown={handleTopSearchKeyDown}
+                placeholder="Zu Modul springen (Enter)"
+                className="canva-top-search"
+                aria-label="Zu Modul springen"
+              />
+            </div>
 
-                <div className="hidden items-center rounded-xl border border-slate-200 bg-white/65 px-3 py-2 text-xs text-slate-600 md:flex">
-                  Systemstatus: <span className="ml-1.5 font-medium text-emerald-700">online</span>
-                </div>
+            <div className="canva-top-actions">
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 md:flex">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <span className="text-xs font-medium text-slate-600">System online</span>
               </div>
+
+              <select
+                value={glassIntensity}
+                onChange={(event) => onGlassIntensityChange?.(event.target.value)}
+                className="canva-select"
+                aria-label="UI Stil"
+              >
+                <option value="subtle">Clean</option>
+                <option value="medium">Balanced</option>
+                <option value="strong">Expressive</option>
+                <option value="ultra">Bold</option>
+              </select>
             </div>
           </header>
 
-          <div className="px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
+          <section className="canva-content-wrap">
             <div className="app-module-shell">{children}</div>
-          </div>
+          </section>
         </main>
       </div>
     </div>

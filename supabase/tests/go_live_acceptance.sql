@@ -11,6 +11,7 @@ DECLARE
   v_item uuid;
   v_order uuid;
   v_line uuid;
+  v_profile_color text;
 BEGIN
   -- Simulate authenticated user for auth.uid() in SQL editor context
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
@@ -37,6 +38,25 @@ BEGIN
   END IF;
   IF to_regprocedure('public.undo_bank_import_payment(uuid)') IS NULL THEN
     RAISE EXCEPTION 'Missing function: public.undo_bank_import_payment(uuid)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'app_users'
+      AND column_name = 'profile_color'
+  ) THEN
+    RAISE EXCEPTION 'Missing column: public.app_users.profile_color';
+  END IF;
+
+  INSERT INTO public.app_users (id, email)
+  VALUES (v_user, 'uat.user@example.local')
+  ON CONFLICT (id) DO UPDATE
+    SET email = EXCLUDED.email
+  RETURNING profile_color INTO v_profile_color;
+
+  IF v_profile_color IS NULL OR v_profile_color !~ '^#[0-9A-F]{6}$' THEN
+    RAISE EXCEPTION 'Invalid app_users.profile_color value: %', v_profile_color;
   END IF;
 
   -- 2) No duplicate sale/cancel movement bookings
