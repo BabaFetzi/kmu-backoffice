@@ -21,5 +21,7 @@ describe("Schedules smoke", () => {
 
     expect(await screen.findByText("Stundenplan Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Undo")).toBeInTheDocument();
+    expect(screen.getByText("Kein kommender Termin")).toBeInTheDocument();
+    expect(screen.queryByText("Break Time")).not.toBeInTheDocument();
   });
 });

@@ -54,10 +54,12 @@ export function resolveEmployeeHexColor({ employeeUserId, employeeName, employee
 export function toEmployeeEventColor(hexColor) {
   const rgb = hexToRgb(hexColor) || { r: 56, g: 189, b: 248 };
   return {
-    bg: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.34)`,
-    bgSoft: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.16)`,
-    bgStrong: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.24)`,
-    border: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78)`,
+    bg: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.28)`,
+    bgSoft: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.14)`,
+    bgStrong: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.34)`,
+    border: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.86)`,
+    accent: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.96)`,
+    text: "#0F172A",
   };
 }
 

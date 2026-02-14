@@ -54,16 +54,6 @@ function formatClock(timeValue) {
   return String(timeValue).slice(0, 5);
 }
 
-function initialsFromName(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-}
-
 function timeToMinutes(timeValue) {
   if (!timeValue) return 0;
   const [h, m] = String(timeValue).slice(0, 5).split(":").map(Number);
@@ -909,21 +899,42 @@ export default function Schedules() {
     await load();
   }
 
+  const plannerSummary = useMemo(() => {
+    const totalBlocks = plannerEvents.length;
+    const totalMinutes = plannerEvents.reduce((sum, event) => sum + (event.endMin - event.startMin), 0);
+    const selectedBlocks =
+      selectedPlannerEventIds.length || (selectedPlannerEventId ? 1 : 0);
+    return {
+      totalBlocks,
+      plannedHours: formatHours(totalMinutes),
+      selectedBlocks,
+    };
+  }, [plannerEvents, selectedPlannerEventId, selectedPlannerEventIds]);
+
+  const nextUpTitle =
+    nextUp?.row?.notes?.trim() || nextUp?.row?.employee_name || "Kein kommender Termin";
+  const nextUpWeekday = nextUp
+    ? WEEKDAYS.find((day) => day.value === nextUp.row.weekday)?.label || ""
+    : "";
+  const nextUpMeta = nextUp
+    ? `${nextUpWeekday}, ${formatClock(nextUp.row.start_time)} • ${nextUp.row.location || "Ohne Ort"}`
+    : "Lege einen Eintrag an, um den nächsten Termin zu sehen.";
+
   return (
-    <div className="scheduler-module space-y-6" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" }}>
-      <div className="rounded-[24px] border border-white/80 bg-white/70 p-6 shadow-[0_24px_80px_rgba(148,163,184,0.25)] backdrop-blur-xl">
-        <div className="mb-6 h-2 w-full overflow-hidden rounded-full bg-slate-200/70">
-          <div className="h-full rounded-full bg-sky-300 transition-all" style={{ width: `${weekProgressPct}%` }} />
+    <div className="scheduler-module space-y-4">
+      <div className="rounded-[24px] border border-slate-200 bg-white/92 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+        <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/70">
+          <div className="h-full rounded-full bg-sky-400 transition-all" style={{ width: `${weekProgressPct}%` }} />
         </div>
 
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Stundenplan Dashboard</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Stundenplan Dashboard</h1>
             <p className="text-sm text-slate-500">
               Woche {weekDays[0]?.dateLabel} - {weekDays[6]?.dateLabel}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => {
@@ -931,7 +942,7 @@ export default function Schedules() {
                 d.setDate(d.getDate() - 7);
                 setWeekStart(toIsoDate(d));
               }}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
               Vorwoche
             </button>
@@ -939,7 +950,7 @@ export default function Schedules() {
               type="date"
               value={weekStart}
               onChange={(e) => setWeekStart(toIsoDate(getMonday(e.target.value)))}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 outline-none"
             />
             <button
               type="button"
@@ -948,14 +959,14 @@ export default function Schedules() {
                 d.setDate(d.getDate() + 7);
                 setWeekStart(toIsoDate(d));
               }}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
               Folgewoche
             </button>
             <select
               value={slotMinutes}
               onChange={(e) => setSlotMinutes(Number(e.target.value))}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 outline-none"
               title="Raster-Zoom"
             >
               <option value={15}>15m</option>
@@ -965,7 +976,7 @@ export default function Schedules() {
             <button
               type="button"
               onClick={() => setAllowOverlap((old) => !old)}
-              className={`rounded-2xl border px-3 py-2 text-xs ${
+              className={`rounded-xl border px-3 py-1.5 text-xs font-medium ${
                 allowOverlap
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                   : "border-amber-200 bg-amber-50 text-amber-700"
@@ -978,7 +989,7 @@ export default function Schedules() {
               type="button"
               onClick={undoPlannerChange}
               disabled={!history.length}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 disabled:opacity-40"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
             >
               Undo
             </button>
@@ -986,7 +997,7 @@ export default function Schedules() {
               type="button"
               onClick={redoPlannerChange}
               disabled={!future.length}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 disabled:opacity-40"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
             >
               Redo
             </button>
@@ -994,34 +1005,34 @@ export default function Schedules() {
               type="button"
               onClick={bulkDeletePlannerEvents}
               disabled={!selectedPlannerEventIds.length}
-              className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 disabled:opacity-40"
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 disabled:opacity-40"
             >
               Auswahl löschen
             </button>
           </div>
         </div>
 
-        <div className="mb-6 rounded-[24px] border border-sky-200/60 bg-gradient-to-br from-cyan-100/90 to-blue-200/90 p-6 shadow-[0_20px_56px_rgba(56,189,248,0.35)] backdrop-blur-md">
-          <div className="text-3xl font-semibold text-slate-900">Up Next</div>
-          <div className="mt-4 flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/70 bg-white text-lg font-semibold text-slate-700 shadow-sm">
-              {initialsFromName(nextUp?.row?.employee_name || "Data Structures")}
-            </div>
-            <div className="min-w-0">
-              <div className="text-2xl font-semibold text-slate-900">
-                {nextUp?.row?.notes || nextUp?.row?.employee_name || "Data Structures"}
-              </div>
-              <div className="text-sm text-slate-600">
-                Raum {nextUp?.row?.location || "303"} • {nextUp ? `${WEEKDAYS.find((d) => d.value === nextUp.row.weekday)?.label || ""}, ${formatClock(nextUp.row.start_time)}` : "Heute"}
-              </div>
-            </div>
+        <div className="mb-4 grid gap-2 md:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Nächster Termin</div>
+            <div className="mt-1 truncate text-sm font-semibold text-slate-900">{nextUpTitle}</div>
+            <div className="truncate text-xs text-slate-600">{nextUpMeta}</div>
           </div>
-          <div className="mt-5 h-1.5 w-full rounded-full bg-white/70">
-            <div className="h-full w-1/3 rounded-full bg-sky-300" />
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Blöcke</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{plannerSummary.totalBlocks}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Geplante Stunden</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{plannerSummary.plannedHours} h</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Auswahl</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{plannerSummary.selectedBlocks}</div>
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-3">
+        <div className="mb-4 flex flex-wrap gap-2">
           {employeeCards.map((card) => {
             const cardColor = colorForEmployee(card.employee_user_id, card.employee_name);
             const isSelected = selectedPlannerEmployee?.key === card.key;
@@ -1032,11 +1043,11 @@ export default function Schedules() {
                 draggable
                 onDragStart={(e) => handleDragStartEmployee(e, card)}
                 onClick={() => setSelectedPlannerEmployee(card)}
-                className="rounded-2xl border px-4 py-2 text-sm shadow-sm transition"
+                className="rounded-xl border px-3 py-1.5 text-xs font-medium shadow-sm transition"
                 style={{
                   borderColor: cardColor.border,
                   background: isSelected ? cardColor.bgStrong : cardColor.bgSoft,
-                  color: "#0f172a",
+                  color: cardColor.text,
                 }}
                 title="Klick: für Drag-Erstellen auswählen. Drag: in Tageskarte."
               >
@@ -1046,9 +1057,9 @@ export default function Schedules() {
           })}
         </div>
 
-        <div className="mb-4 text-2xl font-semibold text-slate-900">Week View</div>
+        <div className="mb-3 text-xl font-semibold text-slate-900">Week View</div>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm text-slate-600">
+          <div className="text-xs text-slate-600">
             Schritt 1: Mitarbeiter oben auswählen. Schritt 2: In einem Tag im Raster ziehen (Drag), um einen Block zu erstellen.
           </div>
           <button
@@ -1059,14 +1070,14 @@ export default function Schedules() {
             Woche im Raster leeren
           </button>
         </div>
-        <div className="mb-4 text-xs text-slate-500">
+        <div className="mb-2 text-xs text-slate-500">
           Bei sehr vielen Überschneidungen werden maximal 4 Spuren dargestellt, weitere als +N.
         </div>
         <div className="mb-4 text-xs text-slate-500">
           Block anklicken zum Auswählen, dann mit `Delete`/`Backspace` löschen. Vorhandene Blöcke per Drag im Raster verschieben. Doppelklick öffnet den Editor. Persistenz: {plannerPersistMode === "db" ? "DB" : "LocalStorage"}.
         </div>
 
-        <div className="scheduler-grid mb-8 overflow-x-auto rounded-[24px] border border-slate-200 bg-white/90 p-3">
+        <div className="scheduler-grid mb-6 overflow-x-auto rounded-[20px] border border-slate-200 bg-white p-2.5">
           <div className="grid min-w-[1400px] grid-cols-[90px_repeat(7,1fr)] gap-2">
             <div className="sticky left-0 z-10 rounded-2xl bg-white">
               <div className="h-12 border-b border-slate-200 px-2 py-3 text-xs font-semibold text-slate-500">Zeit</div>
@@ -1168,7 +1179,7 @@ export default function Schedules() {
                             left: `calc(${left}% + 2px)`,
                             width: `calc(${width}% - 4px)`,
                             height: `${renderHeight}px`,
-                            background: color.bg,
+                            background: isSelected ? color.bgStrong : color.bg,
                             borderColor:
                               isSelected ? "rgba(15, 23, 42, 0.8)" : color.border,
                             boxShadow:
@@ -1176,8 +1187,13 @@ export default function Schedules() {
                                 ? "0 0 0 2px rgba(15, 23, 42, 0.14), 0 10px 24px rgba(2,6,23,0.18)"
                                 : "0 6px 20px rgba(0,0,0,0.08)",
                             cursor: "grab",
+                            color: color.text,
                           }}
                         >
+                          <div
+                            className="absolute inset-x-0 top-0 h-1"
+                            style={{ background: color.accent, opacity: 0.9 }}
+                          />
                           <button
                             type="button"
                             aria-label="Startzeit ziehen"
@@ -1210,13 +1226,13 @@ export default function Schedules() {
                               });
                             }}
                           />
-                          <div className="truncate text-xs font-semibold text-slate-800">{event.employee_name}</div>
+                          <div className="truncate text-xs font-semibold">{event.employee_name}</div>
                           <div className="text-[11px] text-slate-700">
                             {minutesToTime(event.startMin)} - {minutesToTime(event.endMin)}
                           </div>
                           <button
                             type="button"
-                            className="mt-1 rounded border border-slate-300 bg-white/80 px-1 text-[10px] text-slate-700"
+                            className="mt-1 rounded border border-slate-400/70 bg-white/85 px-1 text-[10px] text-slate-700"
                             onClick={(ev) => {
                               ev.stopPropagation();
                               removePlannerEvent(event.id);
@@ -1297,12 +1313,6 @@ export default function Schedules() {
                         </button>
                       );
                     })}
-                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                      <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                        <span className="text-lg">☕</span>
-                        <span>Break Time</span>
-                      </div>
-                    </div>
                     {entries.length === 0 ? <div className="text-xs text-slate-400">Keine Einträge</div> : null}
                   </div>
                 </div>
@@ -1312,8 +1322,8 @@ export default function Schedules() {
         </div>
       </div>
 
-      {err && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
-      {ok && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{ok}</div>}
+      {err && <div className="state-banner state-banner-error">{err}</div>}
+      {ok && <div className="state-banner state-banner-success">{ok}</div>}
 
       <div className="rounded-[24px] border border-slate-200 bg-white/90 p-5 shadow-[0_18px_50px_rgba(148,163,184,0.18)]">
         <div className="mb-3 text-base font-semibold text-slate-900">Gesamtansicht Woche</div>
@@ -1446,7 +1456,7 @@ export default function Schedules() {
       </div>
 
       {showShortcutHelp ? (
-        <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 text-sm text-slate-700">
+        <div className="state-banner state-banner-info">
           Shortcuts: `?` Hilfe, `Delete/Backspace` Block löschen, `Cmd/Ctrl+Z` Undo, `Shift+Cmd/Ctrl+Z` Redo, `Cmd/Ctrl+Click` Mehrfachauswahl.
         </div>
       ) : null}
