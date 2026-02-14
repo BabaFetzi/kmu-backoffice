@@ -104,90 +104,78 @@ export default function App() {
   // Logged out view
   if (!session) {
     return (
-      <div className={`glass-theme glass-${glassIntensity}`}>
-        <div className="min-h-screen bg-slate-50 text-slate-900 grid place-items-center p-4">
-          <div className="w-full max-w-4xl overflow-hidden rounded-[28px] border border-slate-200 bg-white/70 shadow-[0_28px_80px_rgba(54,94,140,0.24)]">
-            <div className="grid lg:grid-cols-[1.1fr_1fr]">
-              <section className="relative hidden border-r border-slate-200 p-8 lg:block">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(181,211,255,0.35),transparent_48%),radial-gradient(circle_at_82%_82%,rgba(170,231,201,0.32),transparent_44%)]" />
-                <div className="relative space-y-6">
-                  <img src="/logo-backoffice.png" alt="KMU BackOffice" className="h-16 w-auto object-contain" />
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">ERP Platform</p>
-                    <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Steuere Aufträge, Einkauf und Belege an einem Ort.</h1>
-                  </div>
-                  <ul className="space-y-2 text-sm text-slate-600">
-                    <li>Live-Überblick über offene Aufgaben und Prozesse</li>
-                    <li>Saubere Rollen- und Audit-Struktur für Teams</li>
-                    <li>Sichere Dokumentation mit revisionsfähigen Belegen</li>
-                  </ul>
+      <div className={`canva-theme canva-${glassIntensity}`}>
+        <div className="auth-layout">
+          <div className="auth-panel">
+            <section className="auth-highlight hidden lg:block">
+              <img src="/logo-backoffice.png" alt="KMU BackOffice" className="h-16 w-auto object-contain" />
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">ERP Platform</p>
+                <h1 className="text-3xl font-semibold tracking-tight text-white">
+                  Steuere Auftraege, Einkauf und Belege in einem kreativen Workspace.
+                </h1>
+              </div>
+              <ul className="space-y-2 text-sm text-slate-200">
+                <li>Live-Ueberblick ueber offene Aufgaben und Prozesse</li>
+                <li>Saubere Rollen- und Audit-Struktur fuer Teams</li>
+                <li>Sichere Dokumentation mit revisionsfaehigen Belegen</li>
+              </ul>
+            </section>
+
+            <section className="auth-form-wrap">
+              <div className="space-y-1">
+                <p className="text-sm uppercase tracking-[0.16em] text-slate-500">Willkommen</p>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">KMU BackOffice</h2>
+                <p className="text-sm text-slate-500">Melde dich an und arbeite direkt weiter.</p>
+              </div>
+
+              <div className="auth-mode-switch">
+                <button
+                  onClick={() => setMode("login")}
+                  className={mode === "login" ? "auth-mode-btn is-active" : "auth-mode-btn"}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => setMode("signup")}
+                  className={mode === "signup" ? "auth-mode-btn is-active" : "auth-mode-btn"}
+                >
+                  Registrieren
+                </button>
+              </div>
+
+              <form onSubmit={mode === "login" ? handleLogin : handleSignup} className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs text-slate-500">Email</label>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="auth-input"
+                    placeholder="du@beispiel.ch"
+                  />
                 </div>
-              </section>
-
-              <section className="p-6 sm:p-8">
-                <div className="text-xl font-semibold tracking-tight">Anmeldung</div>
-                <div className="mt-1 text-sm text-slate-500">KMU BackOffice Zugang</div>
-
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => setMode("login")}
-                    className={`flex-1 rounded-xl border px-3 py-2 text-sm ${
-                      mode === "login"
-                        ? "border-slate-300 bg-slate-100"
-                        : "border-slate-200 bg-transparent hover:bg-slate-100"
-                    }`}
-                  >
-                    Login
-                  </button>
-                  <button
-                    onClick={() => setMode("signup")}
-                    className={`flex-1 rounded-xl border px-3 py-2 text-sm ${
-                      mode === "signup"
-                        ? "border-slate-300 bg-slate-100"
-                        : "border-slate-200 bg-transparent hover:bg-slate-100"
-                    }`}
-                  >
-                    Registrieren
-                  </button>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-500">Passwort</label>
+                  <input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    type="password"
+                    className="auth-input"
+                    placeholder="••••••••"
+                  />
                 </div>
 
-                <form onSubmit={mode === "login" ? handleLogin : handleSignup} className="mt-4 space-y-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-500">Email</label>
-                    <input
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-slate-300"
-                      placeholder="du@beispiel.ch"
-                    />
+                {authError && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {authError}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-500">Passwort</label>
-                    <input
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      type="password"
-                      className="w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-slate-300"
-                      placeholder="••••••••"
-                    />
-                  </div>
+                )}
 
-                  {authError && (
-                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
-                      {authError}
-                    </div>
-                  )}
-
-                  <button
-                    disabled={authLoading}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium hover:bg-slate-200 disabled:opacity-60"
-                    type="submit"
-                  >
-                    {authLoading ? "Bitte warten…" : mode === "login" ? "Einloggen" : "Account erstellen"}
-                  </button>
-                </form>
-              </section>
-            </div>
+                <button disabled={authLoading} className="auth-submit-btn" type="submit">
+                  {authLoading ? "Bitte warten…" : mode === "login" ? "Einloggen" : "Account erstellen"}
+                </button>
+              </form>
+            </section>
           </div>
         </div>
       </div>
@@ -196,7 +184,7 @@ export default function App() {
 
   // Logged in view (ERP Shell)
   return (
-    <div className={`glass-theme glass-${glassIntensity}`}>
+    <div className={`canva-theme canva-${glassIntensity}`}>
       <AppShell
         userEmail={session.user?.email}
         active={active}

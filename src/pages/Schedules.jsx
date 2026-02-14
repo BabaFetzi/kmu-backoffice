@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { resolveEmployeeEventColor, resolveEmployeeHexColor } from "../lib/employeeColors";
 
 const WEEKDAYS = [
   { value: 1, label: "Montag" },
@@ -77,16 +78,6 @@ function minutesToTime(mins) {
     .padStart(2, "0");
   const m = (clamped % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
-}
-
-function eventColor(index) {
-  const palette = [
-    { bg: "rgba(191, 227, 255, 0.88)", border: "rgba(124, 177, 212, 0.9)" },
-    { bg: "rgba(205, 239, 220, 0.88)", border: "rgba(130, 186, 155, 0.9)" },
-    { bg: "rgba(252, 238, 198, 0.9)", border: "rgba(214, 182, 120, 0.9)" },
-    { bg: "rgba(247, 220, 227, 0.9)", border: "rgba(198, 145, 159, 0.88)" },
-  ];
-  return palette[index % palette.length];
 }
 
 function normalizePlannerEvents(events) {
@@ -193,7 +184,7 @@ export default function Schedules() {
         .select("id, employee_name, employee_user_id, weekday, start_time, end_time, location, notes, is_active, created_at")
         .order("weekday", { ascending: true })
         .order("start_time", { ascending: true }),
-      supabase.from("app_users").select("id, email").order("email", { ascending: true }),
+      supabase.from("app_users").select("id, email, profile_color").order("email", { ascending: true }),
       supabase
         .from("employee_planner_events")
         .select("id, event_date, weekday, start_time, end_time, employee_user_id, employee_name, location, notes")
@@ -429,6 +420,23 @@ export default function Schedules() {
     return u?.email || id;
   }
 
+  const employeeColorByUserId = useMemo(() => {
+    const map = {};
+    (users || []).forEach((u) => {
+      if (!u?.id || !u?.profile_color) return;
+      map[u.id] = u.profile_color;
+    });
+    return map;
+  }, [users]);
+
+  function colorForEmployee(employeeUserId, employeeName) {
+    return resolveEmployeeEventColor({
+      employeeUserId: employeeUserId || null,
+      employeeName: employeeName || "",
+      employeeColorByUserId,
+    });
+  }
+
   const employeeCards = useMemo(() => {
     const out = [];
     const seen = new Set();
@@ -442,6 +450,11 @@ export default function Schedules() {
         employee_name: label,
         employee_user_id: u.id,
         key,
+        profile_color: resolveEmployeeHexColor({
+          employeeUserId: u.id,
+          employeeName: label,
+          employeeColorByUserId,
+        }),
       });
     });
 
@@ -453,11 +466,16 @@ export default function Schedules() {
         employee_name: r.employee_name,
         employee_user_id: r.employee_user_id,
         key,
+        profile_color: resolveEmployeeHexColor({
+          employeeUserId: r.employee_user_id || null,
+          employeeName: r.employee_name,
+          employeeColorByUserId,
+        }),
       });
     });
 
     return out.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
-  }, [rows, users]);
+  }, [rows, users, employeeColorByUserId]);
 
   const plannerEventsByDate = useMemo(() => {
     const byDate = new Map();
@@ -1004,23 +1022,28 @@ export default function Schedules() {
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
-          {employeeCards.map((card) => (
-            <button
-              key={card.key}
-              type="button"
-              draggable
-              onDragStart={(e) => handleDragStartEmployee(e, card)}
-              onClick={() => setSelectedPlannerEmployee(card)}
-              className={`rounded-2xl border px-4 py-2 text-sm shadow-sm ${
-                selectedPlannerEmployee?.key === card.key
-                  ? "border-sky-300 bg-sky-100 text-slate-900"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-              title="Klick: für Drag-Erstellen auswählen. Drag: in Tageskarte."
-            >
-              {card.employee_name}
-            </button>
-          ))}
+          {employeeCards.map((card) => {
+            const cardColor = colorForEmployee(card.employee_user_id, card.employee_name);
+            const isSelected = selectedPlannerEmployee?.key === card.key;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                draggable
+                onDragStart={(e) => handleDragStartEmployee(e, card)}
+                onClick={() => setSelectedPlannerEmployee(card)}
+                className="rounded-2xl border px-4 py-2 text-sm shadow-sm transition"
+                style={{
+                  borderColor: cardColor.border,
+                  background: isSelected ? cardColor.bgStrong : cardColor.bgSoft,
+                  color: "#0f172a",
+                }}
+                title="Klick: für Drag-Erstellen auswählen. Drag: in Tageskarte."
+              >
+                {card.employee_name}
+              </button>
+            );
+          })}
         </div>
 
         <div className="mb-4 text-2xl font-semibold text-slate-900">Week View</div>
@@ -1098,8 +1121,8 @@ export default function Schedules() {
                       />
                     ))}
 
-                    {layout.events.map((event, idx) => {
-                      const color = eventColor(idx);
+                    {layout.events.map((event) => {
+                      const color = colorForEmployee(event.employee_user_id, event.employee_name);
                       const visibleLanes = Math.min(layout.laneCount, 4);
                       if (event.lane >= visibleLanes) return null;
                       const laneWidth = 100 / visibleLanes;
@@ -1234,7 +1257,7 @@ export default function Schedules() {
 
         <div className="overflow-x-auto pb-2">
           <div className="flex min-w-[1300px] gap-4">
-            {weekDays.map((d, idx) => {
+            {weekDays.map((d) => {
               const entries = rowsByWeekday.get(d.value) || [];
               return (
                 <div
@@ -1248,12 +1271,8 @@ export default function Schedules() {
                     <div className="text-xs text-slate-500">{d.dateLabel}</div>
                   </div>
                   <div className="space-y-2">
-                    {entries.map((e, eventIdx) => {
-                      const pastel = [
-                        "bg-sky-100 border-sky-200",
-                        "bg-emerald-100 border-emerald-200",
-                        "bg-amber-100 border-amber-200",
-                      ][(idx + eventIdx) % 3];
+                    {entries.map((e) => {
+                      const rowColor = colorForEmployee(e.employee_user_id, e.employee_name);
                       return (
                         <button
                           key={e.id}
@@ -1264,7 +1283,11 @@ export default function Schedules() {
                               [e.id]: prev[e.id] || draftFor(e),
                             }))
                           }
-                          className={`w-full rounded-2xl border px-3 py-3 text-left ${pastel}`}
+                          className="w-full rounded-2xl border px-3 py-3 text-left"
+                          style={{
+                            background: rowColor.bgSoft,
+                            borderColor: rowColor.border,
+                          }}
                         >
                           <div className="text-sm font-semibold text-slate-900">{e.employee_name}</div>
                           <div className="text-xs text-slate-600">

@@ -53,6 +53,15 @@ Im Modul `Belege` gibt es jetzt den Einstieg **Bankabgleich (CSV)**:
 - Bankimport-Historie mit `Rückgängig` (Undo) pro importierter Zahlung
 - Import-Run-Report (letzte 20 Läufe) mit Kennzahlen: Total, Auswahl, Verbucht, Duplikate, Fehler, Hinweise
 
+## Stundenplan Mitarbeiterfarben (Neu)
+
+- Jeder Mitarbeiter in `app_users` hat automatisch eine Profilfarbe (`profile_color`)
+- Beim Erstellen/Syncen eines Benutzerprofils wird die Farbe serverseitig gesetzt
+- Der Stundenplan verwendet diese Farbe konsistent für:
+  - Drag-Karten (Mitarbeiterauswahl)
+  - Blöcke im Wochenraster
+  - Tageskarten in der Week-Ansicht
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

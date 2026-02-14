@@ -30,12 +30,25 @@ DECLARE
   v_level int;
   v_bank_payment_id uuid;
   v_bank_run_id uuid;
+  v_profile_color text;
 BEGIN
   -- Simulate authenticated user for auth.uid()
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
   PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
 
-  -- 1) Master data setup
+  -- 1) Employee profile color assignment
+  INSERT INTO public.app_users (id, email)
+  VALUES (v_user, 'test.user@example.local')
+  ON CONFLICT (id) DO UPDATE
+    SET email = EXCLUDED.email
+  RETURNING profile_color INTO v_profile_color;
+
+  IF v_profile_color IS NULL OR v_profile_color !~ '^#[0-9A-F]{6}$' THEN
+    RAISE EXCEPTION 'Test failed: invalid app_users.profile_color (%).', v_profile_color;
+  END IF;
+  v_checks := v_checks + 1;
+
+  -- 2) Master data setup
   INSERT INTO public.company_profile (created_by, legal_name, street, zip, city, country, iban)
   VALUES (v_user, 'Test Firma AG', 'Teststrasse 1', '8000', 'Zuerich', 'CH', 'CH9300000000000000000')
   RETURNING id INTO v_company;
