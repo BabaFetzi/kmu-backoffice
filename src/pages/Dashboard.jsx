@@ -145,154 +145,173 @@ export default function Dashboard() {
     { label: "Erledigt", value: taskStats.done },
   ];
 
+  const renderContent = () => {
+    if (err) {
+      return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>;
+    }
+    if (loading) {
+      return (
+        <div className="flex h-64 items-center justify-center">
+          <svg className="h-8 w-8 animate-spin text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="ml-3 text-slate-500">Lade Daten...</span>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {kpiCards.map((k, idx) => (
+            <div key={`${k.label}-${idx}`} className="erp-card">
+              <div className="text-xs text-slate-500">{k.label}</div>
+              <div className="mt-2 text-2xl font-semibold">{k.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+          <div className="erp-card">
+            <div className="font-semibold">Offene Posten – Fälligkeit</div>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="erp-card-subtle">
+                <div className="text-xs text-slate-500">Noch nicht fällig</div>
+                <div className="text-lg font-semibold">{formatCHF(agingStats.not_due)}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="text-xs text-amber-700">1–30 Tage</div>
+                <div className="text-lg font-semibold text-amber-700">{formatCHF(agingStats["1_30"])}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="text-xs text-amber-700">31–60 Tage</div>
+                <div className="text-lg font-semibold text-amber-700">{formatCHF(agingStats["31_60"])}</div>
+              </div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+                <div className="text-xs text-rose-700">61–90 Tage</div>
+                <div className="text-lg font-semibold text-rose-700">{formatCHF(agingStats["61_90"])}</div>
+              </div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+                <div className="text-xs text-rose-700">90+ Tage</div>
+                <div className="text-lg font-semibold text-rose-700">{formatCHF(agingStats["90_plus"])}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="erp-card">
+            <div className="font-semibold">Liquiditätsvorschau (30 Tage)</div>
+            <div className="mt-1 text-xs text-slate-500">
+              Zeitraum bis {formatDate(cashflow.horizonEnd)}
+            </div>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span>Erwartete Einzahlungen</span>
+                <span className="font-medium text-emerald-700">{formatCHF(cashflow.incoming30)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>davon überfällig</span>
+                <span className="font-medium text-amber-700">{formatCHF(cashflow.overdueReceivables)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Erwartete Auszahlungen</span>
+                <span className="font-medium text-rose-700">{formatCHF(cashflow.outgoing30)}</span>
+              </div>
+              <div className="h-px bg-slate-200" />
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Netto-Prognose</span>
+                <span
+                  className={`text-base font-semibold ${
+                    cashflow.net30 < 0 ? "text-rose-700" : "text-emerald-700"
+                  }`}
+                >
+                  {formatCHF(cashflow.net30)}
+                </span>
+              </div>
+            </div>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              Offene Einkaufsaufträge: {cashflow.openPurchaseOrders} · ohne Liefertermin:{" "}
+              {cashflow.missingDeliveryDate}
+            </div>
+          </div>
+
+          <div className="erp-card">
+            <div className="font-semibold">Einkauf Status</div>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span>Offen</span>
+                <span>{purchaseStats.open}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Bestellt</span>
+                <span>{purchaseStats.ordered}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Wareneingang</span>
+                <span>{purchaseStats.received}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Storno</span>
+                <span>{purchaseStats.cancelled}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="erp-card">
+            <div className="font-semibold">Lager – niedrigster Bestand</div>
+            <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+              <div className="grid grid-cols-[120px_1fr_90px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                <div>Artikel</div>
+                <div>Name</div>
+                <div className="text-right">Bestand</div>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {lowStock.length === 0 ? (
+                  <div className="px-3 py-3 text-sm text-slate-500">Keine Daten.</div>
+                ) : (
+                  lowStock.map((it) => (
+                    <div key={it.id} className="grid grid-cols-[120px_1fr_90px] px-3 py-2 text-sm">
+                      <div className="text-slate-600">{it.item_no || "—"}</div>
+                      <div className="truncate">{it.name || "—"}</div>
+                      <div className="text-right">
+                        {Number(it.current_stock || 0)} {it.unit || "pcs"}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="erp-card">
+          <div className="font-semibold">Aufgaben Überblick</div>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="erp-card-subtle">
+              <div className="text-xs text-slate-500">Offen</div>
+              <div className="text-xl font-semibold">{taskStats.open}</div>
+            </div>
+            <div className="erp-card-subtle">
+              <div className="text-xs text-slate-500">In Arbeit</div>
+              <div className="text-xl font-semibold">{taskStats.inProgress}</div>
+            </div>
+            <div className="erp-card-subtle">
+              <div className="text-xs text-slate-500">Erledigt</div>
+              <div className="text-xl font-semibold">{taskStats.done}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="erp-page">
       <div>
         <h1 className="erp-page-title">Dashboard</h1>
         <p className="erp-page-subtitle">Schneller Überblick über Aufträge, Liquidität, Einkauf, Aufgaben und Lager.</p>
       </div>
-
-      {err ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {kpiCards.map((k, idx) => (
-          <div key={`${k.label}-${idx}`} className="erp-card">
-            <div className="text-xs text-slate-500">{k.label}</div>
-            <div className="mt-2 text-2xl font-semibold">{loading ? "…" : k.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-        <div className="erp-card">
-          <div className="font-semibold">Offene Posten – Fälligkeit</div>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="erp-card-subtle">
-              <div className="text-xs text-slate-500">Noch nicht fällig</div>
-              <div className="text-lg font-semibold">{formatCHF(agingStats.not_due)}</div>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <div className="text-xs text-amber-700">1–30 Tage</div>
-              <div className="text-lg font-semibold text-amber-700">{formatCHF(agingStats["1_30"])}</div>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <div className="text-xs text-amber-700">31–60 Tage</div>
-              <div className="text-lg font-semibold text-amber-700">{formatCHF(agingStats["31_60"])}</div>
-            </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
-              <div className="text-xs text-rose-700">61–90 Tage</div>
-              <div className="text-lg font-semibold text-rose-700">{formatCHF(agingStats["61_90"])}</div>
-            </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
-              <div className="text-xs text-rose-700">90+ Tage</div>
-              <div className="text-lg font-semibold text-rose-700">{formatCHF(agingStats["90_plus"])}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="erp-card">
-          <div className="font-semibold">Liquiditätsvorschau (30 Tage)</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Zeitraum bis {formatDate(cashflow.horizonEnd)}
-          </div>
-          <div className="mt-3 space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span>Erwartete Einzahlungen</span>
-              <span className="font-medium text-emerald-700">{formatCHF(cashflow.incoming30)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>davon überfällig</span>
-              <span className="font-medium text-amber-700">{formatCHF(cashflow.overdueReceivables)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Erwartete Auszahlungen</span>
-              <span className="font-medium text-rose-700">{formatCHF(cashflow.outgoing30)}</span>
-            </div>
-            <div className="h-px bg-slate-200" />
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Netto-Prognose</span>
-              <span
-                className={`text-base font-semibold ${
-                  cashflow.net30 < 0 ? "text-rose-700" : "text-emerald-700"
-                }`}
-              >
-                {formatCHF(cashflow.net30)}
-              </span>
-            </div>
-          </div>
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            Offene Einkaufsaufträge: {cashflow.openPurchaseOrders} · ohne Liefertermin:{" "}
-            {cashflow.missingDeliveryDate}
-          </div>
-        </div>
-
-        <div className="erp-card">
-          <div className="font-semibold">Einkauf Status</div>
-          <div className="mt-3 space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span>Offen</span>
-              <span>{purchaseStats.open}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Bestellt</span>
-              <span>{purchaseStats.ordered}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Wareneingang</span>
-              <span>{purchaseStats.received}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Storno</span>
-              <span>{purchaseStats.cancelled}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="erp-card">
-          <div className="font-semibold">Lager – niedrigster Bestand</div>
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
-            <div className="grid grid-cols-[120px_1fr_90px] bg-slate-100 px-3 py-2 text-xs text-slate-700">
-              <div>Artikel</div>
-              <div>Name</div>
-              <div className="text-right">Bestand</div>
-            </div>
-            <div className="divide-y divide-slate-200">
-              {lowStock.length === 0 ? (
-                <div className="px-3 py-3 text-sm text-slate-500">Keine Daten.</div>
-              ) : (
-                lowStock.map((it) => (
-                  <div key={it.id} className="grid grid-cols-[120px_1fr_90px] px-3 py-2 text-sm">
-                    <div className="text-slate-600">{it.item_no || "—"}</div>
-                    <div className="truncate">{it.name || "—"}</div>
-                    <div className="text-right">
-                      {Number(it.current_stock || 0)} {it.unit || "pcs"}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="erp-card">
-        <div className="font-semibold">Aufgaben Überblick</div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="erp-card-subtle">
-            <div className="text-xs text-slate-500">Offen</div>
-            <div className="text-xl font-semibold">{taskStats.open}</div>
-          </div>
-          <div className="erp-card-subtle">
-            <div className="text-xs text-slate-500">In Arbeit</div>
-            <div className="text-xl font-semibold">{taskStats.inProgress}</div>
-          </div>
-          <div className="erp-card-subtle">
-            <div className="text-xs text-slate-500">Erledigt</div>
-            <div className="text-xl font-semibold">{taskStats.done}</div>
-          </div>
-        </div>
+      <div className="mt-3">
+        {renderContent()}
       </div>
     </div>
   );
