@@ -112,14 +112,30 @@ export default function App() {
               <div className="space-y-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-300">ERP Platform</p>
                 <h1 className="text-3xl font-semibold tracking-tight text-white">
-                  Steuere Auftraege, Einkauf und Belege in einem kreativen Workspace.
+                  Ein Backoffice, das mitdenkt und mitwaechst.
                 </h1>
+                <p className="text-slate-200 text-sm">
+                  Organisieren Sie Ihr Geschaeft in einem zentralen, intelligenten System. Von Kunden- und Auftragsverwaltung bis hin zu Einkauf, Lager und Buchhaltung.
+                </p>
               </div>
-              <ul className="space-y-2 text-sm text-slate-200">
-                <li>Live-Ueberblick ueber offene Aufgaben und Prozesse</li>
-                <li>Saubere Rollen- und Audit-Struktur fuer Teams</li>
-                <li>Sichere Dokumentation mit revisionsfaehigen Belegen</li>
-              </ul>
+              <div className="space-y-4 text-sm text-slate-200">
+                <div>
+                  <h3 className="font-semibold text-white">Stammdaten & CRM</h3>
+                  <p className="text-xs text-slate-300">Kunden, Lieferanten und Artikel zentral verwalten.</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Auftrag & Einkauf</h3>
+                  <p className="text-xs text-slate-300">Verkaufs- und Einkaufs-Prozesse vollstaendig abbilden.</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Belege & Banking</h3>
+                  <p className="text-xs text-slate-300">Rechnungen, Mahnungen und Zahlungen im Griff behalten.</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Planung & Analyse</h3>
+                  <p className="text-xs text-slate-300">Liquiditaet, Lagerbestand und Aufgaben proaktiv steuern.</p>
+                </div>
+              </div>
             </section>
 
             <section className="auth-form-wrap">
