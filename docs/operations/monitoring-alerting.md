@@ -18,6 +18,7 @@ P1/P2-Fehler und Dateninkonsistenzen frueh erkennen.
 3. Geschaeftsprozess
    - Rechnungen mit `payment_status_mismatch`
    - ueberfaellige Rechnungen ohne Mahnstufe nach Batch-Lauf
+   - offene schwere/kritische Unfallfaelle (`work_incidents`)
 
 ## Pruefqueries
 
@@ -31,6 +32,14 @@ from public.stock_movements
 where booking_key ~ '^(sale|cancel):'
 group by booking_key
 having count(*) > 1;
+
+-- Offene schwere/kritische Unfallfaelle
+select id, incident_no, incident_date, severity, status, location
+from public.work_incidents
+where severity in ('schwer', 'kritisch')
+  and status <> 'closed'
+order by incident_date desc
+limit 50;
 ```
 
 ## Alert-Kanaele

@@ -177,6 +177,20 @@ export default function Suppliers() {
     }
   }, [suppliers, deepLinkHandled, openDrawer]);
 
+  useEffect(() => {
+    if (!open && !drawerOpen) return;
+    function handleEscape(event) {
+      if (event.key !== "Escape") return;
+      if (open) setOpen(false);
+      if (drawerOpen) {
+        setDrawerOpen(false);
+        setSelected(null);
+      }
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [open, drawerOpen]);
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     return suppliers.filter((c) => {
@@ -441,138 +455,161 @@ export default function Suppliers() {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <div className="flex items-start gap-3">
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 md:p-6" onClick={() => setOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="supplier-create-title"
+            className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-100 px-5 py-4 md:px-6">
               <div className="flex-1">
-                <div className="text-lg font-semibold">Neuer Lieferant</div>
-                <div className="text-sm text-slate-500">Adresse & MWST‑UID pflegen.</div>
+                <div id="supplier-create-title" className="text-lg font-semibold">Neuer Lieferant</div>
+                <div className="text-sm text-slate-500">Stammdaten, Kontakt und Adresse strukturiert erfassen.</div>
               </div>
               <button
                 onClick={() => setOpen(false)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-100"
+                aria-label="Dialog schließen"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={createSupplier} className="mt-4 space-y-3">
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">Firmenname *</label>
-                <input
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  placeholder="Lieferant AG"
-                />
+            <form onSubmit={createSupplier} className="flex flex-1 flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-5 py-5 md:px-6">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <h3 className="text-sm font-semibold text-slate-800">Lieferant</h3>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Firmenname *</label>
+                        <input
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                          placeholder="Lieferant AG"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Kontakt</label>
+                          <input
+                            value={contactName}
+                            onChange={(e) => setContactName(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Telefon</label>
+                          <input
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <h3 className="text-sm font-semibold text-slate-800">Kontakt & Steuerdaten</h3>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Email</label>
+                        <input
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">MWST‑UID</label>
+                        <input
+                          value={vatUid}
+                          onChange={(e) => setVatUid(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                          placeholder="CHE-123.456.789 MWST"
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-2">
+                    <h3 className="text-sm font-semibold text-slate-800">Adresse</h3>
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Strasse</label>
+                        <input
+                          value={street}
+                          onChange={(e) => setStreet(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Adresszusatz</label>
+                        <input
+                          value={street2}
+                          onChange={(e) => setStreet2(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">PLZ</label>
+                        <input
+                          value={zip}
+                          onChange={(e) => setZip(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Ort</label>
+                        <input
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                      <div className="md:max-w-[180px]">
+                        <label className="mb-1 block text-xs text-slate-500">Land</label>
+                        <input
+                          value={country}
+                          onChange={(e) => setCountry(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-2">
+                    <h3 className="text-sm font-semibold text-slate-800">Zusatz</h3>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Tags</label>
+                        <input
+                          value={tags}
+                          onChange={(e) => setTags(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                          placeholder="z.B. Holz, Metall, Services"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Notizen</label>
+                        <textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          rows={4}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
+                        />
+                      </div>
+                    </div>
+                  </section>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Kontakt</label>
-                  <input
-                    value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Email</label>
-                  <input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Telefon</label>
-                  <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">MWST‑UID</label>
-                  <input
-                    value={vatUid}
-                    onChange={(e) => setVatUid(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                    placeholder="CHE-123.456.789 MWST"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Strasse</label>
-                  <input
-                    value={street}
-                    onChange={(e) => setStreet(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Adresszusatz</label>
-                  <input
-                    value={street2}
-                    onChange={(e) => setStreet2(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">PLZ</label>
-                  <input
-                    value={zip}
-                    onChange={(e) => setZip(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Ort</label>
-                  <input
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Land</label>
-                  <input
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">Tags</label>
-                <input
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                  placeholder="z.B. Holz, Metall, Services"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">Notizen</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={4}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-300"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -595,7 +632,12 @@ export default function Suppliers() {
       {drawerOpen && selected && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={closeDrawer} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-xl border-l border-slate-200 bg-slate-50 p-5 overflow-y-auto">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Lieferant bearbeiten"
+            className="absolute right-0 top-0 h-full w-full max-w-[min(1100px,96vw)] overflow-y-auto border-l border-slate-200 bg-slate-50 p-5 shadow-2xl"
+          >
             <div className="flex items-start gap-3">
               <div className="flex-1">
                 <div className="text-lg font-semibold">Lieferant bearbeiten</div>
@@ -778,101 +820,107 @@ export default function Suppliers() {
                 <Badge>Lieferantenpreise</Badge>
               </div>
 
-              <form onSubmit={addSupplierItemPrice} className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1.6fr_140px_140px_auto]">
-                <select
-                  value={siItemId}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setSiItemId(next);
-                    const it = items.find((x) => x.id === next);
-                    if (it?.purchase_price !== undefined && it?.purchase_price !== null) {
-                      setSiPrice(String(it.purchase_price));
-                    }
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-                >
-                  <option value="">— Artikel wählen —</option>
-                  {items.map((it) => (
-                    <option key={it.id} value={it.id}>
-                      {it.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={siPrice}
-                  onChange={(e) => setSiPrice(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-                  placeholder="Preis CHF"
-                  inputMode="decimal"
-                />
-                <input
-                  value={siItemNo}
-                  onChange={(e) => setSiItemNo(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-                  placeholder="Lieferant Artikel-Nr."
-                />
-                <button
-                  type="submit"
-                  className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm hover:bg-slate-200"
-                >
-                  {siEditingId ? "Aktualisieren" : "Speichern"}
-                </button>
-                {siEditingId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSiEditingId(null);
-                      setSiItemId("");
-                      setSiPrice("");
-                      setSiItemNo("");
+              <form onSubmit={addSupplierItemPrice} className="mt-3 space-y-2">
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.6fr)_140px_180px_auto]">
+                  <select
+                    value={siItemId}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setSiItemId(next);
+                      const it = items.find((x) => x.id === next);
+                      if (it?.purchase_price !== undefined && it?.purchase_price !== null) {
+                        setSiPrice(String(it.purchase_price));
+                      }
                     }}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
                   >
-                    Abbrechen
+                    <option value="">— Artikel wählen —</option>
+                    {items.map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={siPrice}
+                    onChange={(e) => setSiPrice(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                    placeholder="Preis CHF"
+                    inputMode="decimal"
+                  />
+                  <input
+                    value={siItemNo}
+                    onChange={(e) => setSiItemNo(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                    placeholder="Lieferant Artikel-Nr."
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm hover:bg-slate-200"
+                  >
+                    {siEditingId ? "Aktualisieren" : "Speichern"}
                   </button>
+                </div>
+                {siEditingId && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSiEditingId(null);
+                        setSiItemId("");
+                        setSiPrice("");
+                        setSiItemNo("");
+                      }}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-100"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
                 )}
               </form>
 
-              <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
-                <div className="grid grid-cols-[1.6fr_140px_140px_auto] bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  <div>Artikel</div>
-                  <div>Preis</div>
-                  <div>Lieferant-Nr.</div>
-                  <div className="text-right">Aktion</div>
-                </div>
-                <div className="divide-y divide-slate-200">
-                  {supplierItems.length === 0 ? (
-                    <div className="px-3 py-3 text-sm text-slate-500">Noch keine Preise erfasst.</div>
-                  ) : (
-                    supplierItems.map((si) => (
-                      <div key={si.id} className="grid grid-cols-[1.6fr_140px_140px_auto] px-3 py-2 text-sm">
-                        <div className="text-slate-800">
-                          {items.find((x) => x.id === si.item_id)?.name || "Artikel"}
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                <div className="min-w-[720px]">
+                  <div className="grid grid-cols-[1.6fr_140px_140px_auto] bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <div>Artikel</div>
+                    <div>Preis</div>
+                    <div>Lieferant-Nr.</div>
+                    <div className="text-right">Aktion</div>
+                  </div>
+                  <div className="divide-y divide-slate-200">
+                    {supplierItems.length === 0 ? (
+                      <div className="px-3 py-3 text-sm text-slate-500">Noch keine Preise erfasst.</div>
+                    ) : (
+                      supplierItems.map((si) => (
+                        <div key={si.id} className="grid grid-cols-[1.6fr_140px_140px_auto] px-3 py-2 text-sm">
+                          <div className="text-slate-800">
+                            {items.find((x) => x.id === si.item_id)?.name || "Artikel"}
+                          </div>
+                          <div className="text-slate-700">{formatCHF(si.purchase_price)}</div>
+                          <div className="text-slate-700">{si.supplier_item_no || "—"}</div>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setSiEditingId(si.id);
+                                setSiItemId(si.item_id);
+                                setSiPrice(String(si.purchase_price));
+                                setSiItemNo(si.supplier_item_no || "");
+                              }}
+                              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              onClick={() => deleteSupplierItem(si.id)}
+                              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                            >
+                              Löschen
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-slate-700">{formatCHF(si.purchase_price)}</div>
-                        <div className="text-slate-700">{si.supplier_item_no || "—"}</div>
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => {
-                              setSiEditingId(si.id);
-                              setSiItemId(si.item_id);
-                              setSiPrice(String(si.purchase_price));
-                              setSiItemNo(si.supplier_item_no || "");
-                            }}
-                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
-                          >
-                            Bearbeiten
-                          </button>
-                          <button
-                            onClick={() => deleteSupplierItem(si.id)}
-                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100"
-                          >
-                            Löschen
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

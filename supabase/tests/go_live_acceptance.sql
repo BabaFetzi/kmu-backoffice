@@ -12,6 +12,8 @@ DECLARE
   v_order uuid;
   v_line uuid;
   v_profile_color text;
+  v_incident uuid;
+  v_incident_no text;
 BEGIN
   -- Simulate authenticated user for auth.uid() in SQL editor context
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
@@ -36,8 +38,29 @@ BEGIN
   IF to_regclass('public.bank_import_runs') IS NULL THEN
     RAISE EXCEPTION 'Missing table: public.bank_import_runs';
   END IF;
+  IF to_regclass('public.user_roles') IS NULL THEN
+    RAISE EXCEPTION 'Missing table: public.user_roles';
+  END IF;
+  IF to_regclass('public.work_incidents') IS NULL THEN
+    RAISE EXCEPTION 'Missing table: public.work_incidents';
+  END IF;
+  IF to_regclass('public.work_incident_events') IS NULL THEN
+    RAISE EXCEPTION 'Missing table: public.work_incident_events';
+  END IF;
+  IF to_regclass('public.work_incident_kpi_monthly') IS NULL THEN
+    RAISE EXCEPTION 'Missing view: public.work_incident_kpi_monthly';
+  END IF;
   IF to_regprocedure('public.undo_bank_import_payment(uuid)') IS NULL THEN
     RAISE EXCEPTION 'Missing function: public.undo_bank_import_payment(uuid)';
+  END IF;
+  IF to_regprocedure('public.next_work_incident_no()') IS NULL THEN
+    RAISE EXCEPTION 'Missing function: public.next_work_incident_no()';
+  END IF;
+  IF to_regprocedure('public.report_work_incident(uuid,text)') IS NULL THEN
+    RAISE EXCEPTION 'Missing function: public.report_work_incident(uuid,text)';
+  END IF;
+  IF to_regprocedure('public.close_work_incident(uuid,text)') IS NULL THEN
+    RAISE EXCEPTION 'Missing function: public.close_work_incident(uuid,text)';
   END IF;
   IF NOT EXISTS (
     SELECT 1
@@ -57,6 +80,91 @@ BEGIN
 
   IF v_profile_color IS NULL OR v_profile_color !~ '^#[0-9A-F]{6}$' THEN
     RAISE EXCEPTION 'Invalid app_users.profile_color value: %', v_profile_color;
+  END IF;
+
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (v_user, 'admin'::public.app_role)
+  ON CONFLICT (user_id, role) DO NOTHING;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM pg_policies
+  WHERE schemaname = 'public'
+    AND tablename = 'work_incidents';
+  IF v_cnt < 5 THEN
+    RAISE EXCEPTION 'Missing RLS policies for public.work_incidents (found %).', v_cnt;
+  END IF;
+
+  INSERT INTO public.work_incidents (
+    employee_user_id, incident_date, incident_type, severity, location, description
+  ) VALUES (
+    v_user, CURRENT_DATE, 'berufsunfall', 'leicht', 'UAT Lager', 'UAT Testfall Unfall'
+  )
+  RETURNING id, incident_no INTO v_incident, v_incident_no;
+
+  IF v_incident IS NULL OR v_incident_no IS NULL OR v_incident_no !~ '^INC-[0-9]{4}-[0-9]{6}$' THEN
+    RAISE EXCEPTION 'Invalid work_incidents.incident_no generated: %', v_incident_no;
+  END IF;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident
+    AND status = 'draft';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Work incident defaults invalid (expected status=draft).';
+  END IF;
+
+  PERFORM public.report_work_incident(v_incident, 'UAT Report');
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident
+    AND status = 'reported'
+    AND reported_to_insurer_at IS NOT NULL;
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Work incident report_work_incident failed.';
+  END IF;
+
+  PERFORM public.close_work_incident(v_incident, 'UAT Close');
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident
+    AND status = 'closed'
+    AND close_reason = 'UAT Close';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Work incident close_work_incident failed.';
+  END IF;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_events
+  WHERE incident_id = v_incident
+    AND event_type IN ('created', 'reported', 'closed');
+  IF v_cnt < 3 THEN
+    RAISE EXCEPTION 'Work incident events incomplete (expected >=3, got %).', v_cnt;
+  END IF;
+
+  BEGIN
+    UPDATE public.work_incidents
+    SET status = 'draft'
+    WHERE id = v_incident;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident
+    AND status = 'closed';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Direct status update unexpectedly changed closed incident.';
+  END IF;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_kpi_monthly
+  WHERE created_by = v_user
+    AND month = date_trunc('month', CURRENT_DATE)::date;
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Work incident KPI monthly row missing.';
   END IF;
 
   -- 2) No duplicate sale/cancel movement bookings

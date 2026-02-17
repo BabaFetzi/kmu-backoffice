@@ -31,6 +31,11 @@ DECLARE
   v_bank_payment_id uuid;
   v_bank_run_id uuid;
   v_profile_color text;
+  v_incident_1 uuid;
+  v_incident_no_1 text;
+  v_incident_no_2 text;
+  v_incident_seq_1 int;
+  v_incident_seq_2 int;
 BEGIN
   -- Simulate authenticated user for auth.uid()
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
@@ -45,6 +50,193 @@ BEGIN
 
   IF v_profile_color IS NULL OR v_profile_color !~ '^#[0-9A-F]{6}$' THEN
     RAISE EXCEPTION 'Test failed: invalid app_users.profile_color (%).', v_profile_color;
+  END IF;
+  v_checks := v_checks + 1;
+
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (v_user, 'admin'::public.app_role)
+  ON CONFLICT (user_id, role) DO NOTHING;
+  v_checks := v_checks + 1;
+
+  -- 1b) Work incidents core checks (MIG-1)
+  INSERT INTO public.work_incidents (
+    employee_user_id, incident_date, incident_type, severity, location, description
+  ) VALUES (
+    v_user, CURRENT_DATE, 'berufsunfall', 'leicht', 'Lagerhalle', 'Rutschunfall am Gang'
+  )
+  RETURNING id, incident_no INTO v_incident_1, v_incident_no_1;
+
+  IF v_incident_1 IS NULL OR v_incident_no_1 IS NULL OR v_incident_no_1 !~ '^INC-[0-9]{4}-[0-9]{6}$' THEN
+    RAISE EXCEPTION 'Test failed: invalid incident number format (%).', v_incident_no_1;
+  END IF;
+  v_checks := v_checks + 1;
+
+  INSERT INTO public.work_incidents (
+    employee_user_id, incident_date, incident_type, severity, location, description
+  ) VALUES (
+    v_user, CURRENT_DATE, 'nichtberufsunfall', 'mittel', 'Aussenbereich', 'Sturz auf Parkplatz'
+  )
+  RETURNING incident_no INTO v_incident_no_2;
+
+  IF v_incident_no_2 IS NULL OR v_incident_no_2 !~ '^INC-[0-9]{4}-[0-9]{6}$' THEN
+    RAISE EXCEPTION 'Test failed: second incident number invalid (%).', v_incident_no_2;
+  END IF;
+  v_checks := v_checks + 1;
+
+  v_incident_seq_1 := substring(v_incident_no_1 from '([0-9]{6})$')::int;
+  v_incident_seq_2 := substring(v_incident_no_2 from '([0-9]{6})$')::int;
+  IF v_incident_seq_2 <> v_incident_seq_1 + 1 THEN
+    RAISE EXCEPTION 'Test failed: incident sequence not incremental (% -> %).', v_incident_no_1, v_incident_no_2;
+  END IF;
+  v_checks := v_checks + 1;
+
+  BEGIN
+    INSERT INTO public.work_incidents (
+      employee_user_id, incident_date, incident_type, severity, location, description, work_incapacity_percent
+    ) VALUES (
+      v_user, CURRENT_DATE, 'berufsunfall', 'leicht', 'Lagerhalle', 'Ungueltige Arbeitsunfaehigkeit', 150
+    );
+    RAISE EXCEPTION 'Test failed: work_incapacity_percent > 100 must fail.';
+  EXCEPTION WHEN check_violation THEN
+    v_checks := v_checks + 1;
+  END;
+
+  BEGIN
+    INSERT INTO public.work_incidents (
+      employee_user_id, incident_date, incident_type, severity, location, description, status
+    ) VALUES (
+      v_user, CURRENT_DATE, 'berufsunfall', 'leicht', 'Lagerhalle', 'Ungueltiger Status', 'invalid_status'
+    );
+    RAISE EXCEPTION 'Test failed: invalid status must fail.';
+  EXCEPTION WHEN check_violation THEN
+    v_checks := v_checks + 1;
+  END;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM pg_policies
+  WHERE schemaname = 'public'
+    AND tablename = 'work_incidents';
+  IF v_cnt < 5 THEN
+    RAISE EXCEPTION 'Test failed: expected >= 5 policies for work_incidents, got %.', v_cnt;
+  END IF;
+  v_checks := v_checks + 1;
+
+  -- 1c) Work incidents workflow checks (MIG-2)
+  PERFORM public.report_work_incident(v_incident_1, 'Erstmeldung an Versicherer');
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident_1
+    AND status = 'reported'
+    AND reported_to_insurer_at IS NOT NULL;
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: incident not set to reported.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_events
+  WHERE incident_id = v_incident_1
+    AND event_type = 'created';
+  IF v_cnt < 1 THEN
+    RAISE EXCEPTION 'Test failed: created event missing for incident.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_events
+  WHERE incident_id = v_incident_1
+    AND event_type = 'reported';
+  IF v_cnt < 1 THEN
+    RAISE EXCEPTION 'Test failed: reported event missing for incident.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_events
+  WHERE incident_id = v_incident_1
+    AND event_type = 'note'
+    AND note ilike '%Erstmeldung%';
+  IF v_cnt < 1 THEN
+    RAISE EXCEPTION 'Test failed: report note event missing for incident.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  BEGIN
+    UPDATE public.work_incidents
+    SET status = 'in_treatment'
+    WHERE id = v_incident_1;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident_1
+    AND status = 'reported';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: direct status update bypassed guard.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  BEGIN
+    PERFORM public.close_work_incident(v_incident_1, '');
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident_1
+    AND status = 'reported'
+    AND close_reason IS NULL;
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: close without reason should not modify incident.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  PERFORM public.close_work_incident(v_incident_1, 'Fall abgeschlossen');
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident_1
+    AND status = 'closed'
+    AND close_reason = 'Fall abgeschlossen';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: incident not closed correctly.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_events
+  WHERE incident_id = v_incident_1
+    AND event_type = 'closed';
+  IF v_cnt < 1 THEN
+    RAISE EXCEPTION 'Test failed: closed event missing for incident.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  BEGIN
+    UPDATE public.work_incidents
+    SET location = 'Neuer Ort'
+    WHERE id = v_incident_1;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incidents
+  WHERE id = v_incident_1
+    AND location = 'Lagerhalle';
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: closed incident should be immutable.';
+  END IF;
+  v_checks := v_checks + 1;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM public.work_incident_kpi_monthly
+  WHERE created_by = v_user
+    AND month = date_trunc('month', CURRENT_DATE)::date
+    AND incidents_total >= 2;
+  IF v_cnt <> 1 THEN
+    RAISE EXCEPTION 'Test failed: KPI monthly view missing/invalid row.';
   END IF;
   v_checks := v_checks + 1;
 
