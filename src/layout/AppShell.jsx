@@ -47,6 +47,7 @@ export default function AppShell({
       { key: "documents", label: "Belege", icon: "BE", group: "Prozesse" },
       { key: "tasks", label: "Aufgaben", icon: "TA", group: "Organisation" },
       { key: "schedules", label: "Stundenplan", icon: "SZ", group: "Organisation" },
+      { key: "workIncidents", label: "Unfaelle", icon: "UN", group: "Organisation" },
       { key: "audit", label: "Audit", icon: "AD", group: "System" },
       { key: "admin", label: "Admin", icon: "AM", group: "System" },
     ],

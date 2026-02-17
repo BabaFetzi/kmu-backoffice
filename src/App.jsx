@@ -15,6 +15,7 @@ import Reports from "./pages/Reports";
 import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import Documents from "./pages/Documents";
+import WorkIncidents from "./pages/WorkIncidents";
 
 function prettySupabaseError(error) {
   if (!error) return "";
@@ -222,6 +223,7 @@ export default function App() {
         {active === "reports" && <Reports />}
         {active === "admin" && <Admin />}
         {active === "documents" && <Documents />}
+        {active === "workIncidents" && <WorkIncidents />}
 
         {active !== "customers" &&
           active !== "dashboard" &&
@@ -235,7 +237,8 @@ export default function App() {
           active !== "settings" &&
           active !== "reports" &&
           active !== "admin" &&
-          active !== "documents" && (
+          active !== "documents" &&
+          active !== "workIncidents" && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6">
             <div className="text-lg font-semibold">Modul kommt als nächstes</div>
             <div className="text-sm text-slate-500 mt-1">

@@ -30,4 +30,27 @@ describe("AppShell", () => {
 
     expect(screen.queryByRole("button", { name: "Aufträge" })).not.toBeInTheDocument();
   });
+
+  it("shows and navigates to unfaelle module", () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <AppShell
+        userEmail="team@example.com"
+        active="dashboard"
+        onNavigate={onNavigate}
+        onLogout={vi.fn()}
+        glassIntensity="strong"
+        onGlassIntensityChange={vi.fn()}
+      >
+        <div>workspace content</div>
+      </AppShell>
+    );
+
+    fireEvent.change(screen.getByLabelText("Modul suchen"), { target: { value: "Unfaelle" } });
+    const targetButton = screen.getByRole("button", { name: "Unfaelle" });
+    fireEvent.click(targetButton);
+
+    expect(onNavigate).toHaveBeenCalledWith("workIncidents");
+  });
 });
