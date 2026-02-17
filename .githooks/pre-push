@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+
+# Block direct pushes to main/master. Force branch + PR workflow.
+while read local_ref local_sha remote_ref remote_sha
+do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      echo ""
+      echo "ERROR: Direct push to ${remote_ref#refs/heads/} is blocked in this repo."
+      echo "Use a feature branch + Pull Request instead."
+      echo ""
+      echo "Example:"
+      echo "  git switch -c codex/my-change"
+      echo "  git push -u origin codex/my-change"
+      echo ""
+      exit 1
+      ;;
+  esac
+done
+
+exit 0

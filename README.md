@@ -77,3 +77,35 @@ The React Compiler is not enabled on this template because of its impact on dev 
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
 CI test
+
+## PR-Workflow (empfohlen, sicher)
+
+Einmalig pro Computer:
+
+```bash
+npm run setup:hooks
+```
+
+Danach immer so arbeiten:
+
+```bash
+# 1) Neuen Arbeits-Branch erstellen
+# (Name immer mit codex/ oder feat/)
+git switch -c codex/mein-feature
+
+# 2) Änderungen committen
+git add -A
+git commit -m "feat: kurze beschreibung"
+
+# 3) Branch hochladen
+git push -u origin codex/mein-feature
+```
+
+Dann auf GitHub:
+
+1. `Compare & pull request` klicken
+2. Warten bis `quality-gates` grün ist
+3. `Merge pull request`
+
+Wichtig:
+- Direkte Pushes auf `main` sind lokal geblockt (Git Hook), damit nichts aus Versehen an Schutzregeln vorbei geht.
